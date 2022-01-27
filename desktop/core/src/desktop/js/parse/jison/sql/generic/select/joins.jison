@@ -101,6 +101,9 @@ Join_EDIT
        }
      }
      parser.suggestTables();
+     parser.suggestSchemas({
+       appendDot: true
+     });
      parser.suggestDatabases({
        appendDot: true
      });

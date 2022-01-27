@@ -452,9 +452,16 @@ SchemaQualifiedTableIdentifier
    }
  | RegularOrBacktickedIdentifier '.' RegularOrBacktickedIdentifier
    {
-     parser.addDatabaseLocation(@1, [ { name: $1 } ]);
+     parser.addSchemaLocation(@1, [ { name: $1 } ]);
      parser.addTableLocation(@3, [ { name: $1 }, { name: $3 } ]);
      $$ = { identifierChain: [ { name: $1 }, { name: $3 } ] };
+   }
+ | RegularOrBacktickedIdentifier '.' RegularOrBacktickedIdentifier '.' RegularOrBacktickedIdentifier
+   {
+     parser.addDatabaseLocation(@1, [ { name: $1 } ]);
+     parser.addSchemaLocation(@1, [ { name: $1 }, { name: $3 } ]);
+     parser.addTableLocation(@3, [ { name: $1 }, { name: $3 }, { name: $5 } ]);
+     $$ = { identifierChain: [ { name: $1 }, { name: $3 }, { name: $5 } ] };
    }
  ;
 
@@ -463,27 +470,48 @@ SchemaQualifiedTableIdentifier_EDIT
    {
      parser.suggestTables();
      parser.suggestDatabases({ appendDot: true });
+     parser.suggestSchemas({ appendDot: true });
    }
  | PartialBacktickedIdentifier '.' RegularOrBacktickedIdentifier
+   {
+     parser.suggestSchemas();
+     parser.suggestDatabases();
+     $$ = { identifierChain: [{ name: $1 }] };
+   }
+ | PartialBacktickedIdentifier '.' RegularOrBacktickedIdentifier '.' RegularOrBacktickedIdentifier
    {
      parser.suggestDatabases();
      $$ = { identifierChain: [{ name: $1 }] };
    }
  | RegularOrBacktickedIdentifier '.' PartialBacktickedOrPartialCursor
    {
-     parser.suggestTablesOrColumns($1);
+     parser.suggestSchemas({ appendDot: true, databaseName: $1 });
+     parser.suggestTablesOrColumns([{ name: $1 }]);
+     $$ = { identifierChain: [{ name: $1 }] };
+   }
+ | RegularOrBacktickedIdentifier '.' PartialBacktickedOrPartialCursor '.' RegularOrBacktickedIdentifier 
+   {
+     parser.suggestSchemas({ appendDot: true, databaseName: $1 });
+     $$ = { identifierChain: [{ name: $1 }] };
+   }
+ | RegularOrBacktickedIdentifier '.' RegularOrBacktickedIdentifier '.' PartialBacktickedOrPartialCursor
+   {
+     parser.suggestTablesOrColumns([{ name: $1 }, { name: $3 }]);
+     $$ = { identifierChain: [{ name: $1 }, { name: $3}] };
    }
  ;
 
 SchemaQualifiedIdentifier
  : RegularOrBacktickedIdentifier                                       -> [{ name: $1 }]
  | RegularOrBacktickedIdentifier '.' RegularOrBacktickedIdentifier  -> [{ name: $1 }, { name: $2 }]
+ | RegularOrBacktickedIdentifier '.' RegularOrBacktickedIdentifier '.' RegularOrBacktickedIdentifier  -> [{ name: $1 }, { name: $2 }, { name: $3 }]
  ;
 
 SchemaQualifiedIdentifier_EDIT
  : PartialBacktickedIdentifier
    {
      parser.suggestDatabases({ appendDot: true });
+     parser.suggestSchemas({ appendDot: true });
    }
  | PartialBacktickedIdentifier '.' RegularOrBacktickedIdentifier
    {
@@ -501,6 +529,7 @@ DatabaseIdentifier_EDIT
  : PartialBacktickedOrCursor
    {
      parser.suggestDatabases();
+     parser.suggestSchemas();
    }
  ;
 
@@ -551,9 +580,16 @@ RegularOrBackTickedSchemaQualifiedName
    }
  | RegularOrBacktickedIdentifier '.' RegularOrBacktickedIdentifier
    {
-     parser.addDatabaseLocation(@1, [ { name: $1 } ]);
+     parser.addSchemaLocation(@1, [ { name: $1 } ]);
      parser.addTableLocation(@3, [ { name: $1 }, { name: $3 } ]);
      $$ = { identifierChain: [ { name: $1 }, { name: $3 } ] };
+   }
+ | RegularOrBacktickedIdentifier '.' RegularOrBacktickedIdentifier '.' RegularOrBacktickedIdentifier
+   {
+     parser.addDatabaseLocation(@1, [ { name: $1 } ]);
+     parser.addSchemaLocation(@1, [ { name: $1 }, { name: $3 } ]);
+     parser.addTableLocation(@3, [ { name: $1 }, { name: $3 }, { name: $5 } ]);
+     $$ = { identifierChain: [ { name: $1 }, { name: $3 }, { name: $5 } ] };
    }
  ;
 
@@ -561,6 +597,7 @@ RegularOrBackTickedSchemaQualifiedName_EDIT
  : PartialBacktickedIdentifier
    {
      parser.suggestTables();
+     parser.suggestSchemas({ prependDot: true });
      parser.suggestDatabases({ prependDot: true });
    }
  | RegularOrBacktickedIdentifier '.' PartialBacktickedOrPartialCursor

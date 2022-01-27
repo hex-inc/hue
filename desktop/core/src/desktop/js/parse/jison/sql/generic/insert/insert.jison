@@ -45,6 +45,7 @@ InsertValuesStatement_EDIT
        parser.suggestKeywords(['TABLE']);
      }
      parser.suggestTables();
+     parser.suggestSchemas({ appendDot: true });
      parser.suggestDatabases({ appendDot: true });
    }
  | 'INSERT' 'INTO' OptionalTable SchemaQualifiedTableIdentifier_EDIT

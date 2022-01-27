@@ -32,6 +32,7 @@ ViewDefinition_EDIT
      if (!$3) {
        parser.suggestKeywords(['IF NOT EXISTS']);
      }
+     parser.suggestSchemas({ appendDot: true });
      parser.suggestDatabases({ appendDot: true });
    }
  | 'CREATE' 'VIEW' OptionalIfNotExists 'CURSOR' SchemaQualifiedIdentifier OptionalParenthesizedViewColumnList OptionalComment 'AS' QuerySpecification

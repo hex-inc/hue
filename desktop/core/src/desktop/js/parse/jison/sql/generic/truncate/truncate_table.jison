@@ -37,6 +37,7 @@ TruncateTableStatement_EDIT
  | 'TRUNCATE' 'TABLE' OptionalIfExists 'CURSOR'
    {
      parser.suggestTables();
+     parser.suggestSchemas({ appendDot: true });
      parser.suggestDatabases({ appendDot: true });
      if (!$3) {
        parser.suggestKeywords(['IF EXISTS']);

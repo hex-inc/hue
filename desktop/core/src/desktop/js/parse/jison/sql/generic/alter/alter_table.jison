@@ -50,6 +50,7 @@ AlterTableLeftSide_EDIT
  | 'ALTER' 'TABLE' 'CURSOR'
    {
      parser.suggestTables({ onlyTables: true });
+     parser.suggestSchemas({ appendDot: true });
      parser.suggestDatabases({ appendDot: true });
    }
  ;

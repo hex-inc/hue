@@ -25,6 +25,7 @@ FromClause_EDIT
  : 'FROM' 'CURSOR'
    {
        parser.suggestTables();
+       parser.suggestSchemas({ appendDot: true });
        parser.suggestDatabases({ appendDot: true });
    }
  | 'FROM' TableReferenceList_EDIT
@@ -43,6 +44,7 @@ TableReferenceList_EDIT
  | TableReferenceList ',' AnyCursor
    {
        parser.suggestTables();
+       parser.suggestSchemas({ appendDot: true });
        parser.suggestDatabases({ appendDot: true });
    }
  ;

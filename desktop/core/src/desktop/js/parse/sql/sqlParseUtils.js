@@ -58,6 +58,7 @@ export const LOCATION_TYPES = {
   FILE: 'file',
   FUNCTION: 'function',
   FUNCTION_ARGUMENT: 'functionArgument',
+  SCHEMA: 'schema',
   STATEMENT: 'statement',
   STATEMENT_TYPE: 'statementType',
   TABLE: 'table',
@@ -69,6 +70,7 @@ const APPEND_BACKTICK_SUGGESTIONS = [
   'suggestColumns',
   'suggestCommonTableExpressions',
   'suggestDatabases',
+  'suggestSchemas',
   'suggestTables'
 ];
 
@@ -298,6 +300,14 @@ export const initSharedAutocomplete = parser => {
       location: adjustLocationForCursor(location),
       identifierChain: identifierChain,
       columns: columns
+    });
+  };
+
+  parser.addSchemaLocation = (location, identifierChain) => {
+    parser.yy.locations.push({
+      type: LOCATION_TYPES.SCHEMA,
+      location: adjustLocationForCursor(location),
+      identifierChain: identifierChain
     });
   };
 
@@ -683,6 +693,7 @@ const SYNTAX_PARSER_NOOP_FUNCTIONS = [
   'suggestKeyValues',
   'suggestKeywords',
   'suggestOrderBys',
+  'suggestSchemas',
   'suggestSelectListAliases',
   'suggestTables',
   'suggestTablesOrColumns',

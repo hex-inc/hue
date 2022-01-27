@@ -37,6 +37,9 @@ DropTableStatement_EDIT
        parser.suggestKeywords(['IF EXISTS']);
      }
      parser.suggestTables({ onlyTables: true });
+     parser.suggestSchemas({
+       appendDot: true
+     });
      parser.suggestDatabases({
        appendDot: true
      });

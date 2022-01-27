@@ -87,6 +87,7 @@ OptionalColumnSpecificationsOrLike_EDIT
  | 'LIKE' 'CURSOR'
    {
      parser.suggestTables();
+     parser.suggestSchemas({ appendDot: true });
      parser.suggestDatabases({ appendDot: true });
    }
  | 'LIKE' SchemaQualifiedTableIdentifier_EDIT
