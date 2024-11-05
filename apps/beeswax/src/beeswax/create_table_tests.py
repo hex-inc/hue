@@ -17,19 +17,19 @@
 
 from builtins import object
 import logging
-
-from nose.tools import assert_equal, assert_true, assert_raises
+import pytest
 
 from django import forms
 from beeswax.forms import _clean_terminator
 
 
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 
 class TestCreateTable(object):
 
   def test_custom_delimiter(self):
     # Any thing is good
-    assert_equal('\x01', _clean_terminator('\001'))
-    assert_raises(forms.ValidationError, _clean_terminator, '')
+    assert '\x01' == _clean_terminator('\001')
+    with pytest.raises(forms.ValidationError):
+      _clean_terminator('')

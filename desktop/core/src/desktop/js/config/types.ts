@@ -49,6 +49,7 @@ export interface AppConfig<T extends Interpreter> {
 export interface EditorConfig extends AppConfig<EditorInterpreter> {
   default_limit: number | null;
   default_sql_interpreter: string;
+  source_autocomplete_disabled: boolean;
 }
 
 export enum AppType {
@@ -81,7 +82,11 @@ export interface HueConfig extends GenericApiResponse {
   status: number;
   hue_config: {
     enable_sharing: boolean;
+    collect_usage: boolean;
   };
+  hue_version?: string;
+  img_version?: string;
+  vw_name?: string;
 }
 
 export interface Interpreter {

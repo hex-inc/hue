@@ -421,7 +421,7 @@ var HdfsViewModel = (function () {
               }
           }
        }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
        });
     };
 
@@ -432,7 +432,7 @@ var HdfsViewModel = (function () {
     }
 
     self.getAcls = function () {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       var _isLoading = window.setTimeout(function () {
         self.isLoadingAcls(true);
       }, 1000);
@@ -455,14 +455,14 @@ var HdfsViewModel = (function () {
         }
       }).fail(function (xhr, textStatus, errorThrown) {
         if (xhr.responseText.search('FileNotFoundException') == -1) { // TODO only fetch on existing path
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
           self.isLoadingAcls(false);
         }
       });
     };
 
     self.updateAcls = function () {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       hueAnalytics.log('security/hdfs', 'updateAcls');
 
       $.post("/security/api/hdfs/update_acls", {
@@ -485,7 +485,7 @@ var HdfsViewModel = (function () {
             $(document).trigger("updatedAcls");
           }
       ).fail(function (xhr, textStatus, errorThrown) {
-         $(document).trigger("error", JSON.parse(xhr.responseText).message);
+         huePubSub.publish('hue.global.error', {message: JSON.parse(xhr.responseText).message});
       });
     }
 
@@ -507,7 +507,7 @@ var HdfsViewModel = (function () {
     }
 
     self.bulkDeleteAcls = function () {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       hueAnalytics.log('security/hdfs', 'bulkDeleteAcls');
 
       var checkedPaths = self.checkedItems();
@@ -524,12 +524,12 @@ var HdfsViewModel = (function () {
             $(document).trigger("deletedBulkAcls");
           }
       ).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", JSON.parse(xhr.responseText).message);
+        huePubSub.publish('hue.global.error', {message: JSON.parse(xhr.responseText).message});
       });
     }
 
     self.bulkAddAcls = function () {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       hueAnalytics.log('security/hdfs', 'bulkAddAcls');
 
       var checkedPaths = self.checkedItems();
@@ -544,12 +544,12 @@ var HdfsViewModel = (function () {
             $(document).trigger("addedBulkAcls");
           }
       ).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", JSON.parse(xhr.responseText).message);
+        huePubSub.publish('hue.global.error', {message: JSON.parse(xhr.responseText).message});
       });
     }
 
     self.bulkSyncAcls = function () {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       hueAnalytics.log('security/hdfs', 'bulkSyncAcls');
 
       var checkedPaths = self.checkedItems();
@@ -564,7 +564,7 @@ var HdfsViewModel = (function () {
             $(document).trigger("syncdBulkAcls");
           }
       ).fail(function (xhr, textStatus, errorThrown) {
-         $(document).trigger("error", JSON.parse(xhr.responseText).message);
+         huePubSub.publish('hue.global.error', {message: JSON.parse(xhr.responseText).message});
       });
     }
   }

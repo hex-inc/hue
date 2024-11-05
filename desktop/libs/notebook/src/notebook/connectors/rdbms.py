@@ -15,20 +15,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from builtins import next
-from builtins import object
-import logging
 import sys
-
-from desktop.lib.i18n import force_unicode
+import logging
+from builtins import next, object
 
 from beeswax import data_export
+from desktop.lib.i18n import force_unicode
 from librdbms.server import dbms
-
 from notebook.connectors.base import Api, QueryError, QueryExpired, _get_snippet_name
 
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 
 def query_error_handler(func):
@@ -40,7 +36,7 @@ def query_error_handler(func):
       if 'Invalid query handle' in message or 'Invalid OperationHandle' in message:
         raise QueryExpired(e)
       else:
-        raise QueryError, message, sys.exc_info()[2]
+        raise QueryError(message).with_traceback(sys.exc_info()[2])
   return decorator
 
 
@@ -77,11 +73,9 @@ class RdbmsApi(Api):
       }
     }
 
-
   @query_error_handler
   def check_status(self, notebook, snippet):
     return {'status': 'expired'}
-
 
   @query_error_handler
   def fetch_result(self, notebook, snippet, rows, start_over):
@@ -92,26 +86,21 @@ class RdbmsApi(Api):
       'type': 'table'
     }
 
-
   @query_error_handler
   def fetch_result_metadata(self):
     pass
-
 
   @query_error_handler
   def cancel(self, notebook, snippet):
     return {'status': 0}
 
-
   @query_error_handler
   def get_log(self, notebook, snippet, startFrom=None, size=None):
     return 'No logs'
 
-
   @query_error_handler
   def close_statement(self, notebook, snippet):
     return {'status': -1}
-
 
   @query_error_handler
   def autocomplete(self, snippet, database=None, table=None, column=None, nested=None, operation=None):
@@ -139,7 +128,6 @@ class RdbmsApi(Api):
 
     response['status'] = 0
     return response
-
 
   @query_error_handler
   def get_sample_data(self, snippet, database=None, table=None, column=None, is_async=False, operation=None):

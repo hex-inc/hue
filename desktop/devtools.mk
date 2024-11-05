@@ -21,19 +21,15 @@
 DEVTOOLS += \
 	ipython[5.2.0] \
 	ipdb[0.13.9] \
-	nose[1.3.7] \
-	coverage[4.4.2] \
-	nosetty[0.4] \
-	werkzeug[0.14.1]
+	coverage[4.4.2]
 
 PYPI_MIRROR ?= https://pypi.python.org/simple/
 
 # Install/download dev tools for SDK into the virtual environment
 .PHONY: $(DEVTOOLS)
 $(DEVTOOLS):
-	@echo "--- Installing development tool: $@"
-	$(ENV_PIP)  \
-	   install $(subst ],,$(subst [,==,$@))
+	@echo
+
 
 $(BLD_DIR):
 	@mkdir -p $@

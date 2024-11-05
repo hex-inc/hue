@@ -16,14 +16,17 @@
 
 import axios, {
   AxiosError,
+  AxiosInstance,
   AxiosRequestConfig,
   AxiosResponse,
-  AxiosTransformer,
+  AxiosResponseTransformer,
   CancelToken
 } from 'axios';
 import qs from 'qs';
 
 import { CancellablePromise } from './cancellablePromise';
+import { GLOBAL_ERROR_TOPIC } from 'reactComponents/GlobalAlert/events';
+import { HueAlert } from 'reactComponents/GlobalAlert/types';
 import { hueWindow } from 'types/types';
 import huePubSub from 'utils/huePubSub';
 import logError from 'utils/logError';
@@ -36,12 +39,14 @@ export interface DefaultApiResponse {
   responseText?: string;
   statusText?: string;
   traceback?: string;
+  content?: string;
 }
 
 export interface ApiFetchOptions<T, E = string> extends AxiosRequestConfig {
   silenceErrors?: boolean;
   ignoreSuccessErrors?: boolean;
-  transformResponse?: AxiosTransformer;
+  transformResponse?: AxiosResponseTransformer;
+  qsEncodeData?: boolean;
   handleSuccess?: (
     response: T & DefaultApiResponse,
     resolve: (val: T) => void,
@@ -75,6 +80,8 @@ axiosInstance.interceptors.response.use(response => {
   }
   return response;
 });
+
+export const getAxiosInstance = (): AxiosInstance => axiosInstance;
 
 export const setBaseUrl = (newBaseUrl: string): void => {
   baseUrl = newBaseUrl;
@@ -118,6 +125,9 @@ export const extractErrorMessage = (
     } catch (err) {}
     return defaultResponse.responseText;
   }
+  if (defaultResponse.message && defaultResponse.content) {
+    return `${defaultResponse.message}\n${defaultResponse.content}`;
+  }
   if (errorResponse.message) {
     return errorResponse.message;
   }
@@ -138,7 +148,7 @@ const notifyError = <T>(
   if (!options || !options.silenceErrors) {
     logError(response);
     if (message.indexOf('AuthorizationException') === -1) {
-      huePubSub.publish('hue.error', message);
+      huePubSub.publish<HueAlert>(GLOBAL_ERROR_TOPIC, { message });
     }
   }
 };
@@ -187,8 +197,10 @@ export const post = <T, U = unknown>(
     const { cancelToken, cancel } = getCancelToken();
     let completed = false;
 
+    const encodeData = options?.qsEncodeData == undefined || options?.qsEncodeData;
+
     axiosInstance
-      .post<T & DefaultApiResponse>(url, qs.stringify(data), {
+      .post<T & DefaultApiResponse>(url, encodeData ? qs.stringify(data) : data, {
         cancelToken,
         ...options
       })

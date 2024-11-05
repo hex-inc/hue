@@ -15,19 +15,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from builtins import object
-import logging
 import sys
+import logging
+from builtins import object
 
-if sys.version_info[0] > 2:
-  from django.utils.translation import gettext as _
-else:
-  from django.utils.translation import ugettext as _
+from django.utils.translation import gettext as _
 
 from desktop.lib.exceptions_renderable import PopupException
 
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 GITHUB_OFFICIAL = 'github'
 GIT_READ_ONLY = 'git-read-only'

@@ -13,37 +13,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
 
-import logging
 import os
 import re
-import sys
+import logging
 
 import requests
+from django.utils.translation import gettext as _t, gettext_lazy as _
 
-from desktop.lib.conf import Config, UnspecifiedConfigSection, ConfigSection, coerce_bool, coerce_password_from_script
+from desktop.lib.conf import Config, ConfigSection, UnspecifiedConfigSection, coerce_bool, coerce_password_from_script
 from desktop.lib.idbroker import conf as conf_idbroker
-from hadoop.core_site import get_s3a_access_key, get_s3a_secret_key, get_s3a_session_token, get_raz_api_url, get_raz_s3_default_bucket
+from hadoop.core_site import get_raz_api_url, get_raz_s3_default_bucket, get_s3a_access_key, get_s3a_secret_key, get_s3a_session_token
 
-if sys.version_info[0] > 2:
-  from django.utils.translation import gettext_lazy as _, gettext as _t
-else:
-  from django.utils.translation import ugettext_lazy as _, ugettext as _t
-
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 
 DEFAULT_CALLING_FORMAT = 'boto.s3.connection.OrdinaryCallingFormat'
 SUBDOMAIN_ENDPOINT_RE = 's3.(?P<region>[a-z0-9-]+).amazonaws.com'
 HYPHEN_ENDPOINT_RE = 's3-(?P<region>[a-z0-9-]+).amazonaws.com'
 DUALSTACK_ENDPOINT_RE = 's3.dualstack.(?P<region>[a-z0-9-]+).amazonaws.com'
-AWS_ACCOUNT_REGION_DEFAULT = 'us-east-1' # Location.USEast
+AWS_ACCOUNT_REGION_DEFAULT = 'us-east-1'  # Location.USEast
 PERMISSION_ACTION_S3 = "s3_access"
 REGION_CACHED = None
 IS_IAM_CACHED = None
 IS_EC2_CACHED = None
+
 
 def clear_cache():
   global REGION_CACHED, IS_IAM_CACHED, IS_EC2_CACHED
@@ -51,14 +45,17 @@ def clear_cache():
   IS_IAM_CACHED = None
   IS_EC2_CACHED = None
 
+
 def get_locations():
   return ('EU',  # Ireland
+    'af-south-1',
     'ap-east-1',
     'ap-northeast-1',
     'ap-northeast-2',
     'ap-northeast-3',
     'ap-southeast-1',
     'ap-southeast-2',
+    'ap-southeast-3',
     'ap-south-1',
     'ca-central-1',
     'cn-north-1',
@@ -68,6 +65,7 @@ def get_locations():
     'eu-west-1',
     'eu-west-2',
     'eu-west-3',
+    'eu-south-1',
     'me-south-1',
     'sa-east-1',
     'us-east-1',
@@ -105,14 +103,6 @@ def get_default_region():
   return get_region(conf=AWS_ACCOUNTS['default']) if 'default' in AWS_ACCOUNTS else get_region()
 
 
-def get_default_host():
-  '''Returns the S3 host when Raz is configured'''
-
-  if get_raz_api_url():
-    endpoint = get_raz_s3_default_bucket()
-    if endpoint:
-      return endpoint.get('host')
-
 def get_region(conf=None):
   global REGION_CACHED
 
@@ -120,9 +110,9 @@ def get_region(conf=None):
     return REGION_CACHED
   region = ''
 
-  if conf or get_default_host():
+  if conf:
     # First check the host/endpoint configuration
-    endpoint = get_default_host() or conf.HOST.get()
+    endpoint = conf.HOST.get()
     if endpoint:
       if re.search(SUBDOMAIN_ENDPOINT_RE, endpoint, re.IGNORECASE):
         region = re.search(SUBDOMAIN_ENDPOINT_RE, endpoint, re.IGNORECASE).group('region')
@@ -169,13 +159,6 @@ HAS_IAM_DETECTION = Config(
   type=coerce_bool
 )
 
-IS_SELF_SIGNING_ENABLED = Config(
-  key='is_self_signing_enabled',
-  help=_('Skip boto and use self signed URL and requests to make the calls to S3. Used for testing the RAZ integration.'),
-  type=coerce_bool,
-  private=True,
-  default=False,
-)
 
 def get_default_get_environment_credentials():
   '''Allow to check if environment credentials are present or not'''
@@ -277,6 +260,12 @@ AWS_ACCOUNTS = UnspecifiedConfigSection(
         default=14400,
         type=int
       ),
+      DEFAULT_HOME_PATH=Config(
+        key="default_home_path",
+        type=str,
+        default=None,
+        help="Optionally set this for a different home directory path. e.g. s3a://gethue"
+      ),
     )
   )
 )
@@ -285,8 +274,8 @@ AWS_ACCOUNTS = UnspecifiedConfigSection(
 def is_enabled():
   return ('default' in list(AWS_ACCOUNTS.keys()) and AWS_ACCOUNTS['default'].get_raw() and AWS_ACCOUNTS['default'].ACCESS_KEY_ID.get()) or \
       has_iam_metadata() or \
-      conf_idbroker.is_idbroker_enabled('s3a') or \
-      is_raz_s3()
+      is_raz_s3() or \
+      conf_idbroker.is_idbroker_enabled('s3a')
 
 
 def is_ec2_instance():
@@ -304,11 +293,10 @@ def is_ec2_instance():
 
   try:
     # Low chance of false positive
-    IS_EC2_CACHED = (os.path.exists('/sys/hypervisor/uuid') and open('/sys/hypervisor/uuid', 'r').read()[:3].lower() == 'ec2') or \
-      (
-        os.path.exists('/sys/devices/virtual/dmi/id/product_uuid') and \
-        open('/sys/devices/virtual/dmi/id/product_uuid', 'r').read()[:3].lower() == 'ec2'
-      )
+    IS_EC2_CACHED = (os.path.exists('/sys/hypervisor/uuid') and open('/sys/hypervisor/uuid', 'r').read()[:3].lower() == 'ec2') or (
+      os.path.exists('/sys/devices/virtual/dmi/id/product_uuid')
+      and open('/sys/devices/virtual/dmi/id/product_uuid', 'r').read()[:3].lower() == 'ec2'
+    )
   except Exception as e:
     LOG.info("Detecting if Hue on an EC2 host, error might be expected: %s" % e)
 
@@ -336,7 +324,7 @@ def has_iam_metadata():
       IS_IAM_CACHED = 'iam' in metadata
     else:
       IS_IAM_CACHED = False
-  except:
+  except Exception:
     IS_IAM_CACHED = False
     LOG.exception("Encountered error when checking IAM metadata")
   return IS_IAM_CACHED
@@ -352,13 +340,17 @@ def has_s3_access(user):
 def is_raz_s3():
   from desktop.conf import RAZ  # Must be imported dynamically in order to have proper value
 
-  return (RAZ.IS_ENABLED.get() and 'default' in list(AWS_ACCOUNTS.keys()) and \
-          AWS_ACCOUNTS['default'].HOST.get() and AWS_ACCOUNTS['default'].get_raw() and not IS_SELF_SIGNING_ENABLED.get())
+  return (
+    RAZ.IS_ENABLED.get()
+    and 'default' in list(AWS_ACCOUNTS.keys())
+    and AWS_ACCOUNTS['default'].HOST.get()
+    and AWS_ACCOUNTS['default'].get_raw()
+  )
 
 
 def config_validator(user):
   res = []
-  import desktop.lib.fsmanager # Circular dependecy
+  import desktop.lib.fsmanager  # Circular dependecy
 
   if is_enabled():
     try:

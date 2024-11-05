@@ -136,17 +136,13 @@ except ImportError:
 import errno
 import logging
 
-if sys.version_info[0] > 2:
-  from io import StringIO as string_io
-  import urllib.request, urllib.error
-  from urllib.parse import unquote as urllib_unquote, urlparse as lib_urlparse
-else:
-  from cStringIO import StringIO as string_io
-  from urllib import unquote as urllib_unquote
-  from urlparse import urlparse as lib_urlparse
+from io import StringIO as string_io
+import urllib.request, urllib.error
+from urllib.parse import unquote as urllib_unquote, urlparse as lib_urlparse
 
 
-LOG = logging.getLogger(__name__)
+
+LOG = logging.getLogger()
 
 
 def plat_specific_errors(*errnames):
@@ -1389,7 +1385,7 @@ class ThreadPool(object):
         # Grow/shrink the pool if necessary.
         # Remove any dead threads from our list
         for t in self._threads:
-            if not t.isAlive():
+            if not t.is_alive():
                 self._threads.remove(t)
                 amount -= 1
 
@@ -1411,13 +1407,13 @@ class ThreadPool(object):
         current = threading.currentThread()
         while self._threads:
             worker = self._threads.pop()
-            if worker is not current and worker.isAlive():
+            if worker is not current and worker.is_alive():
                 try:
                     if timeout is None or timeout < 0:
                         worker.join()
                     else:
                         worker.join(timeout)
-                        if worker.isAlive():
+                        if worker.is_alive():
                             # We exhausted the timeout.
                             # Forcibly shut down the socket.
                             c = worker.conn

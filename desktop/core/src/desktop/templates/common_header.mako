@@ -23,7 +23,7 @@ from desktop import conf
 from desktop.auth.backend import is_admin
 from desktop.conf import USE_NEW_EDITOR
 from desktop.models import hue_version
-from desktop.lib.i18n import smart_unicode
+from desktop.lib.i18n import smart_str
 from desktop.webpack_utils import get_hue_bundles
 
 if sys.version_info[0] > 2:
@@ -55,7 +55,7 @@ if USE_NEW_EDITOR.get():
 
 <%def name="get_title(title)">
   % if title:
-    - ${smart_unicode(title)}
+    - ${smart_str(title)}
   % endif
 </%def>
 
@@ -138,8 +138,6 @@ if USE_NEW_EDITOR.get():
     % endif
   </style>
 
-  ${ commonHeaderFooterComponents.header_i18n_redirection() }
-
   % if user.is_authenticated:
   <%
     global_constants_url = '/desktop/globalJsConstants.js?v=' + hue_version()
@@ -203,14 +201,8 @@ ${ hueIcons.symbols() }
 
 % if hasattr(request, 'environ') and request.environ.get("PATH_INFO").find("/hue/") < 0:
   <script>
-    window.location.replace("/");
+    window.location.replace(window.HUE_BASE_URL || "/");
   </script>
-% endif
-
-% if banner_message or conf.CUSTOM.BANNER_TOP_HTML.get():
-  <div class="banner">
-    ${ banner_message or conf.CUSTOM.BANNER_TOP_HTML.get() | n,unicode }
-  </div>
 % endif
 
 <%
@@ -254,7 +246,7 @@ ${ hueIcons.symbols() }
             % endif
             % if is_adls_enabled:
             <li><a href="/${apps['filebrowser'].display_name}/view=adl:/">
-              <span class="fa fa-fw" style="font-size:20px;vertical-align: middle;"><svg class="hi"><use xlink:href='#hi-adls'></use></svg></span>${_('ADLS Browser')}</a>
+              <span class="fa fa-fw" style="font-size:20px;vertical-align: middle;"><svg class="hi"><use href='#hi-adls'></use></svg></span>${_('ADLS Browser')}</a>
             </li>
             % endif
           </ul>
@@ -275,7 +267,7 @@ ${ hueIcons.symbols() }
       <li class="hideMoreThan1380">
         % if is_adls_enabled:
           <a title="${_('ADLS Browser')}" data-rel="navigator-tooltip" href="/${apps['filebrowser'].display_name}/view=adl:/">
-            <span style="font-size:15px;vertical-align: middle;"><svg class="hi"><use xlink:href='#hi-adls'></use></svg></span>
+            <span style="font-size:15px;vertical-align: middle;"><svg class="hi"><use href='#hi-adls'></use></svg></span>
           </a>
         % endif
       </li>
@@ -331,7 +323,7 @@ ${ hueIcons.symbols() }
   </div>
     <a class="brand nav-tooltip pull-left" title="${_('About Hue')}" data-rel="navigator-tooltip" data-bind="hueLink: '/about'" href="javascript: void(0);">
       <svg style="margin-top: 2px; margin-left:8px;width: 60px;height: 16px;display: inline-block;">
-        <use xlink:href="#hi-logo"></use>
+        <use href="#hi-logo"></use>
       </svg>
     </a>
     % if user.is_authenticated and section != 'login':
@@ -346,16 +338,16 @@ ${ hueIcons.symbols() }
          <ul role="menu" class="dropdown-menu">
            % if 'beeswax' in apps:
              % if USE_NEW_EDITOR.get():
-             <li><a href="${ url('notebook:editor') }?type=hive"><svg class="svg-app-icon"><use xlink:href="#hi-hive"></use></svg> ${_('Hive')}</a></li>
+             <li><a href="${ url('notebook:editor') }?type=hive"><svg class="svg-app-icon"><use href="#hi-hive"></use></svg> ${_('Hive')}</a></li>
              % else:
-             <li><a href="/${apps['beeswax'].display_name}"><svg class="svg-app-icon"><use xlink:href="#hi-hive"></use></svg> ${_('Hive')}</a></li>
+             <li><a href="/${apps['beeswax'].display_name}"><svg class="svg-app-icon"><use href="#hi-hive"></use></svg> ${_('Hive')}</a></li>
              % endif
            % endif
            % if 'impala' in apps:
              % if USE_NEW_EDITOR.get(): ## impala requires beeswax anyway
-             <li><a href="${ url('notebook:editor') }?type=impala"><svg class="svg-app-icon"><use xlink:href="#hi-impala"></use></svg> ${_('Impala')}</a></li>
+             <li><a href="${ url('notebook:editor') }?type=impala"><svg class="svg-app-icon"><use href="#hi-impala"></use></svg> ${_('Impala')}</a></li>
              % else:
-             <li><a href="/${apps['impala'].display_name}"><svg class="svg-app-icon"><use xlink:href="#hi-impala"></use></svg> ${_('Impala')}</a></li>
+             <li><a href="/${apps['impala'].display_name}"><svg class="svg-app-icon"><use href="#hi-impala"></use></svg> ${_('Impala')}</a></li>
              % endif
            % endif
            % if 'rdbms' in apps:
@@ -367,28 +359,28 @@ ${ hueIcons.symbols() }
            % endif
            % if 'pig' in apps:
              % if USE_NEW_EDITOR.get() and False:
-             <li><a href="${ url('notebook:editor') }?type=pig"><svg class="svg-app-icon"><use xlink:href="#hi-pig"></use></svg> ${_('Pig')}</a></li>
+             <li><a href="${ url('notebook:editor') }?type=pig"><svg class="svg-app-icon"><use href="#hi-pig"></use></svg> ${_('Pig')}</a></li>
              % else:
-             <li><a href="/${apps['pig'].display_name}"><svg class="svg-app-icon"><use xlink:href="#hi-pig"></use></svg> ${_('Pig')}</a></li>
+             <li><a href="/${apps['pig'].display_name}"><svg class="svg-app-icon"><use href="#hi-pig"></use></svg> ${_('Pig')}</a></li>
              % endif
            % endif
            % if 'jobsub' in apps:
-             <li><a href="/${apps['jobsub'].display_name}"><svg class="svg-app-icon"><use xlink:href="#hi-job-designer"></use></svg> ${_('Job Designer')}</a></li>
+             <li><a href="/${apps['jobsub'].display_name}"><svg class="svg-app-icon"><use href="#hi-job-designer"></use></svg> ${_('Job Designer')}</a></li>
            % endif
          </ul>
        </li>
        % elif query_apps[1] == 1:
            % if 'beeswax' in apps:
              % if USE_NEW_EDITOR.get():
-             <li><a href="${ url('notebook:editor') }?type=hive"><svg class="svg-app-icon"><use xlink:href="#hi-hive"></use></svg> ${_('Hive')}</a></li>
+             <li><a href="${ url('notebook:editor') }?type=hive"><svg class="svg-app-icon"><use href="#hi-hive"></use></svg> ${_('Hive')}</a></li>
              % else:
-             <li><a href="/${apps['beeswax'].display_name}"><svg class="svg-app-icon"><use xlink:href="#hi-hive"></use></svg> ${_('Hive')}</a></li>
+             <li><a href="/${apps['beeswax'].display_name}"><svg class="svg-app-icon"><use href="#hi-hive"></use></svg> ${_('Hive')}</a></li>
              % endif
            % elif 'impala' in apps:
              % if USE_NEW_EDITOR.get(): ## impala requires beeswax anyway
-             <li><a href="${ url('notebook:editor') }?type=impala"><svg class="svg-app-icon"><use xlink:href="#hi-impala"></use></svg> ${_('Impala')}</a></li>
+             <li><a href="${ url('notebook:editor') }?type=impala"><svg class="svg-app-icon"><use href="#hi-impala"></use></svg> ${_('Impala')}</a></li>
              % else:
-             <li><a href="/${apps['impala'].display_name}"><svg class="svg-app-icon"><use xlink:href="#hi-impala"></use></svg> ${_('Impala')}</a></li>
+             <li><a href="/${apps['impala'].display_name}"><svg class="svg-app-icon"><use href="#hi-impala"></use></svg> ${_('Impala')}</a></li>
              % endif
            % else:
            <li><a href="/${apps[query_apps[0]].display_name}"><i class="fa fa-terminal hideMoreThan950"></i><span class="hide950">${apps[query_apps[0]].nice_name}</span></a></li>
@@ -577,11 +569,3 @@ ${ hueIcons.symbols() }
   }
   </script>
 % endif
-
-<div id="jHueNotify" class="alert alert-dismissible alert-warning hide">
-  <button type="button" class="close" data-dismiss="alert">
-    <span aria-hidden="true">&times;</span>
-    <span class="sr-only">${ _('Close') }</span>
-  </button>
-  <p class="message"></p>
-</div>

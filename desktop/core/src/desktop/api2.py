@@ -15,55 +15,81 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from future import standard_library
-standard_library.install_aliases()
-from builtins import map
-import logging
 import os
+import re
 import json
-import sys
-import tempfile
+import logging
 import zipfile
+import tempfile
+from builtins import map
 
+from celery.app.control import Control
+
+from desktop.conf import TASK_SERVER_V2
+
+if hasattr(TASK_SERVER_V2, 'get') and TASK_SERVER_V2.ENABLED.get():
+  from desktop.celery import app as celery_app
+  from filebrowser.utils import parse_broker_url
+from collections import defaultdict
 from datetime import datetime
+from io import StringIO as string_io
 
 from django.core import management
 from django.db import transaction
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.utils.html import escape
+from django.utils.translation import gettext as _
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
-from metadata.conf import has_catalog
-from metadata.catalog_api import search_entities as metadata_search_entities, _highlight, \
-  search_entities_interactive as metadata_search_entities_interactive
-from notebook.connectors.altus import SdxApi, AnalyticDbApi, DataEngApi, DataWarehouse2Api
-from notebook.connectors.base import Notebook, get_interpreter
-from notebook.models import Analytics
-from useradmin.models import User, Group
-
+from beeswax.models import Namespace
 from desktop import appmanager
 from desktop.auth.backend import is_admin
-from desktop.conf import ENABLE_CONNECTORS, ENABLE_GIST_PREVIEW, get_clusters, IS_K8S_ONLY, ENABLE_SHARING
-from desktop.lib.conf import BoundContainer, GLOBAL_CONFIG, is_anonymous
+from desktop.conf import (
+  CUSTOM,
+  ENABLE_CHUNKED_FILE_UPLOADER,
+  ENABLE_CONNECTORS,
+  ENABLE_GIST_PREVIEW,
+  ENABLE_NEW_STORAGE_BROWSER,
+  ENABLE_SHARING,
+  IS_K8S_ONLY,
+  TASK_SERVER_V2,
+  get_clusters,
+)
+from desktop.lib.conf import GLOBAL_CONFIG, BoundContainer, is_anonymous
 from desktop.lib.django_util import JsonResponse, login_notrequired, render
 from desktop.lib.exceptions_renderable import PopupException
 from desktop.lib.export_csvxls import make_response
-from desktop.lib.i18n import smart_str, force_unicode
+from desktop.lib.i18n import force_unicode, smart_str
 from desktop.lib.paths import get_desktop_root
-from desktop.models import Document2, Document, Directory, FilesystemException, uuid_default, \
-  UserPreferences, get_user_preferences, set_user_preferences, get_cluster_config, __paginate, _get_gist_document
-from desktop.views import serve_403_error
+from desktop.log import DEFAULT_LOG_DIR
+from desktop.models import (
+  Directory,
+  Document,
+  Document2,
+  FilesystemException,
+  UserPreferences,
+  __paginate,
+  _get_gist_document,
+  get_cluster_config,
+  get_user_preferences,
+  set_user_preferences,
+  uuid_default,
+)
+from desktop.views import get_banner_message, serve_403_error
+from filebrowser.tasks import check_disk_usage_and_clean_task, document_cleanup_task
+from hadoop.cluster import is_yarn
+from metadata.catalog_api import (
+  _highlight,
+  search_entities as metadata_search_entities,
+  search_entities_interactive as metadata_search_entities_interactive,
+)
+from metadata.conf import has_catalog
+from notebook.connectors.base import Notebook
+from useradmin.models import Group, User
 
-if sys.version_info[0] > 2:
-  from io import StringIO as string_io
-  from django.utils.translation import gettext as _
-else:
-  from StringIO import StringIO as string_io
-  from django.utils.translation import ugettext as _
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 
 def api_error_handler(func):
@@ -84,9 +110,22 @@ def api_error_handler(func):
 
 
 @api_error_handler
+def get_banners(request):
+  banners = {
+    'system': get_banner_message(request),
+    'configured': CUSTOM.BANNER_TOP_HTML.get()
+  }
+  return JsonResponse(banners)
+
+
+@api_error_handler
 def get_config(request):
   config = get_cluster_config(request.user)
   config['hue_config']['is_admin'] = is_admin(request.user)
+  config['hue_config']['is_yarn_enabled'] = is_yarn()
+  config['hue_config']['enable_new_storage_browser'] = ENABLE_NEW_STORAGE_BROWSER.get()
+  config['hue_config']['enable_chunked_file_uploader'] = ENABLE_CHUNKED_FILE_UPLOADER.get()
+  config['hue_config']['enable_task_server'] = TASK_SERVER_V2.ENABLED.get()
   config['clusters'] = list(get_clusters(request.user).values())
   config['documents'] = {
     'types': list(Document2.objects.documents(user=request.user).order_by().values_list('type', flat=True).distinct())
@@ -131,12 +170,12 @@ def get_hue_config(request):
         conf['values'] = recurse_conf(module.get().values())
       else:
         conf['default'] = str(module.config.default)
-        if 'password' in module.config.key:
+        if module.config.secret or 'password' in module.config.key:
           conf['value'] = '*' * 10
-        elif sys.version_info[0] > 2:
-          conf['value'] = str(module.get_raw())
         else:
-          conf['value'] = str(module.get_raw()).decode('utf-8', 'replace')
+          conf['value'] = str(module.get_raw())
+        conf['value'] = re.sub('(.*)://(.*):(.*)@(.*)', r'\1://\2:**********@\4', conf['value'])
+
       attrs.append(conf)
 
     return attrs
@@ -147,6 +186,7 @@ def get_hue_config(request):
     'apps': apps
   })
 
+
 @api_error_handler
 def get_context_namespaces(request, interface):
   '''
@@ -155,51 +195,27 @@ def get_context_namespaces(request, interface):
   response = {}
   namespaces = []
 
-  clusters = list(get_clusters(request.user).values())
-
-  # Currently broken if not sent
-  namespaces.extend([{
-      'id': cluster['id'],
-      'name': cluster['name'],
-      'status': 'CREATED',
-      'computes': [cluster]
-    } for cluster in clusters if cluster.get('type') == 'direct'
-  ])
-
-  if interface == 'hive' or interface == 'impala' or interface == 'report':
-    if get_cluster_config(request.user)['has_computes']:
-      # Note: attaching computes to namespaces might be done via the frontend in the future
-      if interface == 'impala':
-        if IS_K8S_ONLY.get():
-          adb_clusters = DataWarehouse2Api(request.user).list_clusters()['clusters']
-        else:
-          adb_clusters = AnalyticDbApi(request.user).list_clusters()['clusters']
-        for _cluster in adb_clusters: # Add "fake" namespace if needed
-          if not _cluster.get('namespaceCrn'):
-            _cluster['namespaceCrn'] = _cluster['crn']
-            _cluster['id'] = _cluster['crn']
-            _cluster['namespaceName'] = _cluster['clusterName']
-            _cluster['name'] = _cluster['clusterName']
-            _cluster['compute_end_point'] = '%(publicHost)s' % _cluster['coordinatorEndpoint'] if IS_K8S_ONLY.get() else '',
-      else:
-        adb_clusters = []
-
-      if IS_K8S_ONLY.get():
-        sdx_namespaces = []
-      else:
-        sdx_namespaces = SdxApi(request.user).list_namespaces()
-
-      # Adding "fake" namespace for cluster without one
-      sdx_namespaces.extend([_cluster for _cluster in adb_clusters if not _cluster.get('namespaceCrn') or \
-        (IS_K8S_ONLY.get() and 'TERMINAT' not in _cluster['status'])])
-
-      namespaces.extend([{
-          'id': namespace.get('crn', 'None'),
-          'name': namespace.get('namespaceName'),
-          'status': namespace.get('status'),
-          'computes': [_cluster for _cluster in adb_clusters if _cluster.get('namespaceCrn') == namespace.get('crn')]
-        } for namespace in sdx_namespaces if namespace.get('status') == 'CREATED' or IS_K8S_ONLY.get()
-      ])
+  ns_objs = Namespace.objects.filter(dialect=interface)
+  if ns_objs:
+    namespaces = [{
+        'id': ns.id,
+        'name': ns.name,
+        'status': 'CREATED',
+        'computes': [{'id': c['id'], 'type': c['type'], 'name': c['name'], 'dialect': c['dialect'],
+                      'interface': c['interface']} for c in ns.get_computes(request.user)]
+      } for ns in ns_objs
+    ]
+    namespaces = [ns for ns in namespaces if ns['computes']]
+  else:
+    # Currently broken if not sent
+    clusters = list(get_clusters(request.user).values())
+    namespaces.extend([{
+        'id': cluster['id'],
+        'name': cluster['name'],
+        'status': 'CREATED',
+        'computes': [cluster]
+      } for cluster in clusters if cluster.get('type') == 'direct'
+    ])
 
   response[interface] = namespaces
   response['status'] = 0
@@ -213,30 +229,13 @@ def get_context_computes(request, interface):
   Some clusters like Snowball can have multiple computes for a certain languages (Hive, Impala...).
   '''
   response = {}
-  computes = []
 
-  clusters = list(get_clusters(request.user).values())
-
-  if get_cluster_config(request.user)['has_computes']: # TODO: only based on interface selected?
-    interpreter = get_interpreter(connector_type=interface, user=request.user)
-    if interpreter['dialect'] == 'impala':
-      # dw_clusters = DataWarehouse2Api(request.user).list_clusters()['clusters']
-      dw_clusters = [
-        {'crn': 'c1', 'clusterName': 'c1', 'status': 'created', 'options': {'server_host': 'c1.gethue.com', 'server_port': 10000}},
-        {'crn': 'c2', 'clusterName': 'c2', 'status': 'created', 'options': {'server_host': 'c2.gethue.com', 'server_port': 10000}},
-      ]
-      computes.extend([{
-          'id': cluster.get('crn'),
-          'name': cluster.get('clusterName'),
-          'status': cluster.get('status'),
-          'namespace': cluster.get('namespaceCrn', cluster.get('crn')),
-          'type': interpreter['dialect'],
-          'options': cluster['options'],
-        } for cluster in dw_clusters]
-      )
-  else:
+  ns = Namespace.objects.filter(dialect=interface).first()
+  computes = ns.get_computes(request.user) if ns else None
+  if not computes:
     # Currently broken if not sent
-    computes.extend([{
+    clusters = list(get_clusters(request.user).values())
+    computes = [{
         'id': cluster['id'],
         'name': cluster['name'],
         'namespace': cluster['id'],
@@ -244,7 +243,7 @@ def get_context_computes(request, interface):
         'type': cluster['type'],
         'options': {}
       } for cluster in clusters if cluster.get('type') == 'direct'
-    ])
+    ]
 
   response[interface] = computes
   response['status'] = 0
@@ -439,7 +438,7 @@ def _get_document_helper(request, uuid, with_data, with_dependencies, path):
       notebook = Notebook(document=document)
       notebook = upgrade_session_properties(request, notebook)
       data = json.loads(notebook.data)
-      if document.type == 'query-pig': # Import correctly from before Hue 4.0
+      if document.type == 'query-pig':  # Import correctly from before Hue 4.0
         properties = data['snippets'][0]['properties']
         if 'hadoopProperties' not in properties:
           properties['hadoopProperties'] = []
@@ -447,7 +446,7 @@ def _get_document_helper(request, uuid, with_data, with_dependencies, path):
           properties['parameters'] = []
         if 'resources' not in properties:
           properties['resources'] = []
-      if data.get('uuid') != document.uuid: # Old format < 3.11
+      if data.get('uuid') != document.uuid:  # Old format < 3.11
         data['uuid'] = document.uuid
 
     response['data'] = data
@@ -553,7 +552,6 @@ def update_document(request):
   })
 
 
-
 @api_error_handler
 @require_POST
 def delete_document(request):
@@ -583,6 +581,7 @@ def delete_document(request):
       'status': 0,
   })
 
+
 @api_error_handler
 @require_POST
 def copy_document(request):
@@ -608,7 +607,7 @@ def copy_document(request):
 
   # Import workspace for all oozie jobs
   if document.type == 'oozie-workflow2' or document.type == 'oozie-bundle2' or document.type == 'oozie-coordinator2':
-    from oozie.models2 import Workflow, Coordinator, Bundle, _import_workspace
+    from oozie.models2 import Bundle, Coordinator, Workflow, _import_workspace
     # Update the name field in the json 'data' field
     if document.type == 'oozie-workflow2':
       workflow = Workflow(document=document)
@@ -714,6 +713,152 @@ def share_document(request):
     'status': 0,
     'document': doc.to_dict()
   })
+
+
+@api_error_handler
+@require_POST
+def handle_submit(request):
+  # Extract the task name and params from the request
+  try:
+    data = json.loads(request.body)
+    task_name = data.get('taskName')
+    task_params = data.get('taskParams')
+  except json.JSONDecodeError as e:
+    return JsonResponse({'error': str(e)}, status=500)
+
+  if task_name == 'document cleanup':
+    keep_days = task_params.get('keep-days')
+    task_kwargs = {
+      'keep_days': keep_days,
+      'user_id': request.user.id,
+      'username': request.user.username,
+    }
+    # Enqueue the document cleanup task with keyword arguments
+    task = document_cleanup_task.apply_async(kwargs=task_kwargs)
+
+    # Return a response indicating the task has been scheduled
+    return JsonResponse({
+      'taskName': task_name,
+      'taskParams': task_params,
+      'status': 'Scheduled',
+      'task_id': task.id,  # The task ID generated by Celery
+    })
+
+  elif task_name == 'tmp clean up':
+    cleanup_threshold = task_params.get('threshold for clean up')
+    disk_check_interval = task_params.get('disk check interval')
+    task_kwargs = {
+      'username': request.user.username,
+      'cleanup_threshold': cleanup_threshold,
+      'disk_check_interval': disk_check_interval
+    }
+    task = check_disk_usage_and_clean_task.apply_async(kwargs=task_kwargs)
+
+    return JsonResponse({
+      'taskName': task_name,
+      'status': 'Scheduled',
+      'task_id': task.id,  # The task ID generated by Celery
+    })
+
+  return JsonResponse({
+    'status': 0
+  })
+
+
+@api_error_handler
+def get_taskserver_tasks(request):
+  if not TASK_SERVER_V2.ENABLED.get():
+    return JsonResponse({'error': 'Task server is not enabled'}, status=400)
+
+  """Retirve the tasks from the database"""
+  redis_client = parse_broker_url(TASK_SERVER_V2.BROKER_URL.get())
+  tasks = []
+  try:
+    # Use scan_iter to efficiently iterate over keys matching the first pattern
+    for key in redis_client.scan_iter('celery-task-meta-*'):
+      task = json.loads(redis_client.get(key))
+      tasks.append(task)
+
+    # Use scan_iter to efficiently iterate over keys matching the second pattern
+    for key in redis_client.scan_iter('task:*'):
+      task = json.loads(redis_client.get(key))
+      tasks.append(task)
+
+    return JsonResponse(tasks, safe=False)
+  except Exception as e:
+    LOG.exception("Failed to retrieve tasks: %s", str(e))
+    return JsonResponse({'error': str(e)}, status=500)
+  finally:
+    redis_client.close()
+
+
+@api_error_handler
+def check_upload_status(request, task_id):
+  redis_client = parse_broker_url(TASK_SERVER_V2.BROKER_URL.get())
+  try:
+    task_key = f'celery-task-meta-{task_id}'
+    task_data = redis_client.get(task_key)
+
+    if task_data is None:
+      return JsonResponse({'error': 'Task not found'}, status=404)
+
+    task = json.loads(task_data)
+    is_finalized = task.get('status') == 'SUCCESS'
+    is_running = task.get('status') == 'RUNNING'
+    is_failure = task.get('status') == 'FAILURE'
+    is_revoked = task.get('status') == 'REVOKED'
+
+    return JsonResponse({'isFinalized': is_finalized, 'isRunning': is_running, 'isFailure': is_failure, 'isRevoked': is_revoked})
+  except Exception as e:
+    LOG.exception("Failed to check upload status: %s", str(e))
+    return JsonResponse({'error': str(e)}, status=500)
+  finally:
+    redis_client.close()
+
+
+@api_error_handler
+def kill_task(request, task_id):
+  # Check the current status of the task
+  status_response = check_upload_status(request, task_id)
+  status_data = json.loads(status_response.content)
+
+  if status_data.get('isFinalized') or status_data.get('isRevoked') or status_data.get('isFailure'):
+    return JsonResponse({'status': 'info', 'message': f'Task {task_id} has already been completed or revoked.'})
+
+  try:
+    control = Control(app=celery_app)
+    control.revoke(task_id, terminate=True)
+    return JsonResponse({'status': 'success', 'message': f'Task {task_id} has been terminated.'})
+  except Exception as e:
+    return JsonResponse({'status': 'error', 'message': f'Failed to terminate task {task_id}: {str(e)}'})
+
+
+def get_task_logs(request, task_id):
+  log_dir = os.getenv("DESKTOP_LOG_DIR", DEFAULT_LOG_DIR)
+  log_file = "%s/celery.log" % (log_dir)
+  task_log = []
+  escaped_task_id = re.escape(task_id)
+
+  # Using a simpler and more explicit regex to debug
+  task_end_pattern = re.compile(rf"\[{escaped_task_id}\].*succeeded")
+  task_start_pattern = re.compile(rf"\[{escaped_task_id}\].*received")
+  try:
+    with open(log_file, 'r') as file:
+      recording = False
+      for line in file:
+        if task_start_pattern.search(line):
+          recording = True  # Start recording log lines
+        if recording:
+          task_log.append(line)
+        if task_end_pattern.search(line) and recording:
+          break  # Stop recording after finding the end of the task
+
+  except FileNotFoundError:
+    return HttpResponse(f'Log file not found at {log_file}', status=404)
+  except Exception as e:
+    return HttpResponse(str(e), status=500)
+
+  return HttpResponse(''.join(task_log), content_type='text/plain')
 
 
 @api_error_handler
@@ -864,7 +1009,7 @@ def import_documents(request):
 
   stdout = string_io()
   try:
-    with transaction.atomic(): # We wrap both commands to commit loaddata & sync
+    with transaction.atomic():  # We wrap both commands to commit loaddata & sync
       management.call_command('loaddata', f.name, verbosity=3, traceback=True, stdout=stdout)
       Document.objects.sync()
 
@@ -891,6 +1036,7 @@ def import_documents(request):
     return JsonResponse({'status': -1, 'message': smart_str(e)})
   finally:
     stdout.close()
+
 
 def _update_imported_oozie_document(doc, uuids_map):
   for key, value in uuids_map.items():
@@ -1170,11 +1316,11 @@ def _create_or_update_document_with_owner(doc, owner, uuids_map):
   if doc['fields']['dependencies']:
     history_deps_list = []
     for index, (uuid, version, is_history) in enumerate(doc['fields']['dependencies']):
-      if not uuid in list(uuids_map.keys()) and not is_history and \
+      if uuid not in list(uuids_map.keys()) and not is_history and \
       not Document2.objects.filter(uuid=uuid, version=version).exists():
         raise PopupException(_('Cannot import document, dependency with UUID: %s not found.') % uuid)
       elif is_history:
-        history_deps_list.insert(0, index) # Insert in decreasing order to facilitate delete
+        history_deps_list.insert(0, index)  # Insert in decreasing order to facilitate delete
         LOG.warning('History dependency with UUID: %s ignored while importing document %s' % (uuid, doc['fields']['name']))
 
     # Delete history dependencies not found in the DB

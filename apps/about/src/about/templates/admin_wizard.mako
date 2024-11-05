@@ -23,7 +23,6 @@ from metadata.conf import OPTIMIZER, has_optimizer
 
 from desktop.auth.backend import is_admin
 from desktop.conf import has_connectors
-from desktop.lib.i18n import smart_unicode
 from desktop.views import commonheader, commonfooter
 
 if sys.version_info[0] > 2:
@@ -330,10 +329,10 @@ ${ layout.menubar(section='quick_start') }
           connector: connector.id
         }, function(data) {
           if (data.message) {
-            $(document).trigger('info', data.message);
+            huePubSub.publish('hue.global.info', { message: data.message });
           }
           if (data.errorMessage) {
-            $(document).trigger('error', data.errorMessage);
+            huePubSub.publish('hue.global.error', { message: data.errorMessage });
           }
           if (data.status == 0 && $(event.target).data("is-connector")) {
             huePubSub.publish('cluster.config.refresh.config');
@@ -350,15 +349,15 @@ ${ layout.menubar(section='quick_start') }
     $.post(button.data("sample-url"), function(data) {
       if (data.status == 0) {
         if (data.message) {
-          $(document).trigger('info', data.message);
+          huePubSub.publish('hue.global.info', { message: data.message });
         } else {
-          $(document).trigger('info', '${ _("Examples refreshed") }');
+          huePubSub.publish('hue.global.info', { message: '${ _("Examples refreshed") }'});
         }
         if ($(button).data("is-connector")) {
           huePubSub.publish('cluster.config.refresh.config');
         }
       } else {
-        $(document).trigger('error', data.message);
+        huePubSub.publish('hue.global.error', {message: data.message});
       }
     })
     .always(function(data) {
@@ -381,7 +380,7 @@ ${ layout.menubar(section='quick_start') }
         $("#check-config-section .info").removeClass('hide');
       })
       .fail(function() {
-        $(document).trigger('error', '${ _("Check config failed: ")}');
+        huePubSub.publish('hue.global.error', {message: '${ _("Check config failed: ")}'});
       });
     }
 
@@ -407,13 +406,13 @@ ${ layout.menubar(section='quick_start') }
       var calls = jQuery.map($(button).data("sample-data"), function(app) {
         return $.post($(button).data("sample-url"), {data: app}, function(data) {
           if (data.status != 0) {
-            $(document).trigger('error', data.message);
+            huePubSub.publish('hue.global.error', {message: data.message});
           }
         });
       });
       $.when.apply(this, calls)
       .then(function() {
-        $(document).trigger('info', '${ _("Examples refreshed") }');
+        huePubSub.publish('hue.global.info', { message: '${ _("Examples refreshed") }'});
       })
       .always(function(data) {
         $(button).button('reset');
@@ -491,9 +490,9 @@ ${ layout.menubar(section='quick_start') }
     $(".updatePreferences").click(function () {
       $.post("${ url('about:update_preferences') }", $("input").serialize(), function(data) {
         if (data.status == 0) {
-          $(document).trigger('info', '${ _("Configuration updated") }');
+          huePubSub.publish('hue.global.info', { message: '${ _("Configuration updated") }'});
         } else {
-          $(document).trigger('error', data.data);
+          huePubSub.publish('hue.global.error', {message: data.data});
         }
       });
     });

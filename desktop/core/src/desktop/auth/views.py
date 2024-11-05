@@ -14,54 +14,43 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 
-from future import standard_library
-standard_library.install_aliases()
 try:
   import oauth2 as oauth
-except:
+except Exception:
   oauth = None
 
 import cgi
 import logging
-import sys
 from datetime import datetime
+from urllib.parse import urlencode as urllib_urlencode
 
-from axes.decorators import axes_dispatch
 import django.contrib.auth.views
-from django.core.exceptions import SuspiciousOperation
-from django.contrib.auth import login, get_backends, authenticate
+from axes.decorators import axes_dispatch
+from django.contrib.auth import authenticate, get_backends, login
 from django.contrib.sessions.models import Session
+from django.core.exceptions import SuspiciousOperation
 from django.http import HttpResponseRedirect
 from django.urls import reverse
-
-from hadoop.fs.exceptions import WebHdfsException
-from notebook.connectors.base import get_api
-from useradmin.models import get_profile, UserProfile, User, Group
-from useradmin.views import ensure_home_directory, require_change_password
+from django.utils.encoding import smart_str
+from django.utils.translation import gettext as _
 
 from desktop.auth import forms as auth_forms
 from desktop.auth.backend import OIDCBackend
-from desktop.auth.forms import ImpersonationAuthenticationForm, OrganizationUserCreationForm, OrganizationAuthenticationForm
-from desktop.conf import OAUTH, ENABLE_ORGANIZATIONS, SESSION
+from desktop.auth.forms import ImpersonationAuthenticationForm, OrganizationAuthenticationForm, OrganizationUserCreationForm
+from desktop.conf import ENABLE_ORGANIZATIONS, OAUTH, SESSION
 from desktop.lib import fsmanager
-from desktop.lib.django_util import render, login_notrequired, JsonResponse
+from desktop.lib.django_util import JsonResponse, login_notrequired, render
 from desktop.lib.exceptions_renderable import PopupException
-from desktop.log.access import access_log, access_warn, last_access_map
-from desktop.views import samlgroup_check
+from desktop.log.access import access_warn, last_access_map
 from desktop.settings import LOAD_BALANCER_COOKIE
+from desktop.views import saml_login_headers, samlgroup_check
+from hadoop.fs.exceptions import WebHdfsException
+from notebook.connectors.base import get_api
+from useradmin.models import Group, User, UserProfile, get_profile
+from useradmin.views import ensure_home_directory, require_change_password
 
-
-if sys.version_info[0] > 2:
-  from urllib.parse import urlencode as urllib_urlencode
-  from django.utils.translation import gettext as _
-else:
-  from urllib import urlencode as urllib_urlencode
-  from django.utils.translation import ugettext as _
-
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 
 def get_current_users():
@@ -160,9 +149,17 @@ def dt_login(request, from_modal=False):
 
         userprofile.first_login = False
         userprofile.last_activity = datetime.now()
-        if userprofile.creation_method == UserProfile.CreationMethod.EXTERNAL: # This is to fix a bug in Hue 4.3
+        if userprofile.creation_method == UserProfile.CreationMethod.EXTERNAL:  # This is to fix a bug in Hue 4.3
           userprofile.creation_method = UserProfile.CreationMethod.EXTERNAL.name
         userprofile.update_data({'auth_backend': user.backend})
+        try:
+          userprofile.update_data({'X-Forwarded-For': request.META['HTTP_X_FORWARDED_FOR']})
+        except KeyError as e:
+          LOG.error('HTTP-X-FORWARDED-FOR header not found: %s' % smart_str(e))
+        try:
+          userprofile.update_data({'X-CSRF-TOKEN': request.META['CSRF_COOKIE']})
+        except KeyError as e:
+          LOG.error('X-CSRF-TOKEN header not found: %s' % smart_str(e))
         userprofile.save()
 
         msg = 'Successful login for user: %s' % user.username
@@ -200,12 +197,13 @@ def dt_login(request, from_modal=False):
       request.method == 'POST' and request.user.username != request.POST.get('username'):
     # local user login failed, give the right auth_form with 'server' field
     auth_form = auth_forms.LdapAuthenticationForm()
-  
-  if not from_modal and SESSION.ENABLE_TEST_COOKIE.get() :
+
+  if not from_modal and SESSION.ENABLE_TEST_COOKIE.get():
     request.session.set_test_cookie()
 
   if 'SAML2Backend' in backend_names:
     request.session['samlgroup_permitted_flag'] = samlgroup_check(request)
+    saml_login_headers(request)
 
   renderable_path = 'login.mako'
   if from_modal:
@@ -223,7 +221,7 @@ def dt_login(request, from_modal=False):
   })
 
   if not request.user.is_authenticated:
-    response.delete_cookie(LOAD_BALANCER_COOKIE) # Note: might be re-balanced to another Hue on login.
+    response.delete_cookie(LOAD_BALANCER_COOKIE)  # Note: might be re-balanced to another Hue on login.
 
   return response
 
@@ -273,12 +271,13 @@ def profile(request):
   """
   return render(None, request, _profile_dict(request.user))
 
+
 def _profile_dict(user):
   return dict(
     username=user.username,
     first_name=user.first_name,
     last_name=user.last_name,
-    last_login=str(user.last_login), # datetime object needs to be converted
+    last_login=str(user.last_login),  # datetime object needs to be converted
     email=user.email
   )
 

@@ -42,10 +42,13 @@ const TEMPLATE = `
       'Show details'
     )}</a></li>
     <li><a href="javascript: void(0);" data-bind="click: open"><i class="fa fa-fw fa-edit"></i> ${I18n(
-      'Open document'
+      'Open'
+    )}</a></li>
+    <li><a href="javascript: void(0);" data-bind="click: function() { $data.selected(true); $data.parent.copy() }"><i class="fa fa-fw fa-files-o"></i> ${I18n(
+  'Copy'
     )}</a></li>
     <li><a href="javascript: void(0);" data-bind="click: function() { $data.selected(true); huePubSub.publish('doc.show.delete.modal', $data.parent); }"><i class="fa fa-fw fa-trash-o"></i> ${I18n(
-      'Delete document'
+      'Delete'
     )}</a></li>
     <!-- /ko -->
     <!-- ko if: $containerContext.sharingEnabled -->
@@ -53,6 +56,9 @@ const TEMPLATE = `
       'Share'
     )}</a></li>
     <!-- /ko -->
+    <li><a href="javascript: void(0);" data-bind="click: contextMenuDownload"><i class="fa fa-fw fa-download"></i> ${I18n(
+      'Download'
+    )}</a></li>
   </script>
 
   <script type="text/html" id="assist-document-header-actions">
@@ -154,13 +160,13 @@ const TEMPLATE = `
             <!-- /ko -->
             <li class="divider"></li>
             <li data-bind="css: { 'disabled': $data.isTrash() || $data.isTrashed() || !$data.canModify() }">
-              <a href="javascript:void(0);" data-bind="click: function () { $('.new-document-drop-down').removeClass('open'); huePubSub.publish('show.create.directory.modal', $data); }"><svg class="hi"><use xlink:href="#hi-folder"></use><use xlink:href="#hi-plus-addon"></use></svg> ${I18n(
+              <a href="javascript:void(0);" data-bind="click: function () { $('.new-document-drop-down').removeClass('open'); huePubSub.publish('show.create.directory.modal', $data); }"><svg class="hi"><use href="#hi-folder"></use><use href="#hi-plus-addon"></use></svg> ${I18n(
                 'New folder'
               )}</a>
             </li>
           </ul>
       </span>
-      <a class="inactive-action" href="javascript:void(0)" data-bind="click: function () { huePubSub.publish('${ REFRESH_DOC_ASSIST_EVENT }'); }"><i class="pointer fa fa-refresh" data-bind="css: { 'fa-spin blue' : loading }" title="${I18n(
+      <a class="inactive-action" href="javascript:void(0)" data-bind="click: function () { huePubSub.publish('${ REFRESH_DOC_ASSIST_EVENT }'); }"><i class="pointer fa fa-refresh" data-testid="assist-sql--refresh--button" data-bind="css: { 'fa-spin blue' : loading }" title="${I18n(
         'Manual refresh'
       )}"></i></a>
     </div>
@@ -186,7 +192,7 @@ const TEMPLATE = `
   <div class="assist-flex-search">
     <div class="assist-filter">
       <form autocomplete="off">
-        <input class="clearable" type="text" ${ window.PREVENT_AUTOFILL_INPUT_ATTRS } placeholder="${I18n(
+        <input class="clearable" data-testid="assist-documents--filter--input" type="text" ${ window.PREVENT_AUTOFILL_INPUT_ATTRS } placeholder="${I18n(
           'Filter...'
         )}" data-bind="clearable: filter, value: filter, valueUpdate: 'afterkeydown'"/>
       </form>

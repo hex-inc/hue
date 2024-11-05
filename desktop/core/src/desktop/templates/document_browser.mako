@@ -18,7 +18,6 @@
 import sys
 
 from desktop import conf
-from desktop.lib.i18n import smart_unicode
 from desktop.views import _ko
 
 if sys.version_info[0] > 2:
@@ -81,11 +80,16 @@ else:
           <div class="container-fluid">
             <div class="pull-right" style="padding-right: 10px">
               <div class="doc-browser-folder-actions" data-bind="visible: activeEntry && activeEntry() && !activeEntry().hasErrors()">
+                <!-- ko if: searchVisible -->
+                <div class="doc-browser-action doc-browser-search-container pull-left"><input class="clearable" type="text" placeholder="${ _('Search for name, description, etc...') }" data-bind="hasFocus: searchFocus, textInput: searchQuery, clearable: searchQuery"></div>
+                <!-- /ko -->
                 <!-- ko with: activeEntry -->
+                <div class="doc-browser-action doc-browser-type-filter margin-right-10 pull-left" data-bind="component: { name: 'hue-drop-down', params: { value: serverTypeFilter, entries: DOCUMENT_TYPES, linkTitle: '${ _ko('Type filter') }' } }"></div>
+                <a class="btn margin-right-20" title="${_('Search')}" href="javascript:void(0);" data-bind="tooltip: { placement: 'bottom', delay: 750 }, toggle: $parent.searchVisible, click: function () { $parent.searchFocus($parent.searchVisible()) }, css: { 'blue' : ($parent.searchVisible() || $parent.searchQuery()) }"><i class="fa fa-fw fa-search"></i></a>
                 <!-- ko if: app === 'documents' -->
                 <div class="inline">
                   <span class="dropdown">
-                    <a class="btn" title="${_('New document')}" data-toggle="dropdown" data-bind="tooltip: { placement: 'bottom', delay: 750 }, css: { 'disabled': isTrash() || isTrashed() || ! canModify() }" href="javascript:void(0);" style="height: 20px"><svg class="hi"><use xlink:href="#hi-file"></use><use xlink:href="#hi-plus-addon"></use></svg></a>
+                    <a class="btn" title="${_('New document')}" data-toggle="dropdown" data-bind="tooltip: { placement: 'bottom', delay: 750 }, css: { 'disabled': isTrash() || isTrashed() || ! canModify() }" href="javascript:void(0);" style="height: 20px"><svg class="hi"><use href="#hi-file"></use><use href="#hi-plus-addon"></use></svg></a>
                     <ul class="dropdown-menu less-padding document-types" style="margin-top:10px; width: 175px;" role="menu">
                       % if 'beeswax' in apps:
                         <li>
@@ -156,7 +160,7 @@ else:
                       % endif
                       <li class="divider"></li>
                       <li data-bind="css: { 'disabled': isTrash() || isTrashed() || !canModify() }">
-                        <a href="javascript:void(0);" data-bind="click: function () {  huePubSub.publish('show.create.directory.modal', $data); }"><svg class="hi"><use xlink:href="#hi-folder"></use><use xlink:href="#hi-plus-addon"></use></svg> ${_('New folder')}</a>
+                        <a href="javascript:void(0);" data-bind="click: function () {  huePubSub.publish('show.create.directory.modal', $data); }"><svg class="hi"><use href="#hi-folder"></use><use href="#hi-plus-addon"></use></svg> ${_('New folder')}</a>
                       </li>
                     </ul>
                   </span>
@@ -226,7 +230,7 @@ else:
               <ul class="nav">
                 <li class="app-header">
                   <a href="/hue/useradmin">
-                    <svg class="hi"><use xlink:href="#hi-documents"></use></svg>
+                    <svg class="hi"><use href="#hi-documents"></use></svg>
                     <!-- ko component: { name: 'hue-favorite-app', params: { app: 'home' }} --><!-- /ko -->
                   </a>
                 </li>
@@ -297,6 +301,9 @@ else:
                 <li data-bind="css: { 'disabled': $parent.selectedEntries().length !== 1 }"><a href="javascript:void(0);" data-bind="click: showRenameDirectoryModal, css: { 'disabled': $parent.selectedEntries().length !== 1 }"><i class="fa fa-fw fa-edit"></i> ${ _('Rename') }</a></li>
                 <!-- /ko -->
                 <li data-bind="css: { 'disabled': $parent.selectedEntries().length !== 1 }"><a href="javascript:void(0);" data-bind="click: open, css: { 'disabled': $parent.selectedEntries().length !== 1 }"><i class="fa fa-fw fa-file-o"></i> ${ _('Open') }</a></li>
+                <li data-bind="css: { 'disabled': isDirectory() || isTrashed() }">
+                  <a href="javascript:void(0);" data-bind="click: function () { $parent.copy()  }, css: { 'disabled': isDirectory() || isTrashed() }"><i class="fa fa-fw fa-files-o"></i> ${_('Copy')} <span data-bind="visible: $parent.selectedEntries().length > 1, text: '(' + $parent.selectedEntries().length + ')'"></span></a>
+                </li>
                 <li><a href="javascript:void(0);" data-bind="click: contextMenuDownload"><i class="fa fa-fw fa-download"></i> ${ _('Download') } <span data-bind="visible: $parent.selectedEntries().length > 1, text: '(' + $parent.selectedEntries().length + ')'"></span></a></li>
                 <li data-bind="css: { 'disabled' : $parent.sharedWithMeSelected()  && ! $parent.superuser }"><a href="javascript:void(0);" data-bind="click: function () { huePubSub.publish('doc.show.delete.modal', $parent); }, css: { 'disabled' : $parent.sharedWithMeSelected() && ! $parent.superuser }">
                   <i class="fa fa-fw fa-times"></i> ${ _('Move to trash') } <span data-bind="visible: $parent.selectedEntries().length > 1, text: '(' + $parent.selectedEntries().length + ')'"></span></a>
@@ -565,8 +572,12 @@ else:
           self.activeEntry().search(query);
         });
 
+        self.searchVisible = ko.observable(false);
+        self.searchFocus = ko.observable(false);
+
         huePubSub.subscribe('file.browser.directory.opened', function () {
           self.searchQuery('');
+          self.searchVisible(false);
           $('.tooltip').hide();
         });
 

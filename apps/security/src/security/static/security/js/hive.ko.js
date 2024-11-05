@@ -261,7 +261,7 @@ var HiveViewModel = (function () {
     }
 
     self.saveGroups = function () {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       $.post("/security/api/hive/update_role_groups", {
         role: ko.mapping.toJSON(self)
       }, function (data) {
@@ -272,22 +272,22 @@ var HiveViewModel = (function () {
             self.originalGroups.push(group);
           });
         } else {
-          $(document).trigger("error", data.message);
+          huePubSub.publish('hue.global.error', {message: data.message});
         }
       }).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", xhr.responseText);
+        huePubSub.publish('hue.global.error', {message: xhr.responseText});
       });
     }
 
     self.create = function () {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       if (self.isValid()) {
         self.isLoading(true);
         $.post("/security/api/hive/create_role", {
           role: ko.mapping.toJSON(self)
         }, function (data) {
           if (data.status == 0) {
-            $(document).trigger("info", data.message);
+            huePubSub.publish('hue.global.info', { message: data.message });
             vm.showCreateRole(false);
             self.reset();
             var role = new Role(vm, data.role);
@@ -296,10 +296,10 @@ var HiveViewModel = (function () {
             vm.list_sentry_privileges_by_authorizable();
             $(document).trigger("createdRole");
           } else {
-            $(document).trigger("error", data.message);
+            huePubSub.publish('hue.global.error', {message: data.message});
           }
         }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
         }).always(function () {
           self.isLoading(false);
         });
@@ -307,22 +307,22 @@ var HiveViewModel = (function () {
     }
 
     self.update = function () {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       if (self.isValid()) {
         self.isLoading(true);
         $.post("/security/api/hive/save_privileges", {
           role: ko.mapping.toJSON(self)
         }, function (data) {
           if (data.status == 0) {
-            $(document).trigger("info", data.message);
+            huePubSub.publish('hue.global.info', { message: data.message });
             vm.showCreateRole(false);
             vm.list_sentry_privileges_by_authorizable();
             $(document).trigger("createdRole");
           } else {
-            $(document).trigger("error", data.message);
+            huePubSub.publish('hue.global.error', {message: data.message});
           }
         }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
         }).always(function () {
           self.isLoading(false);
         });
@@ -330,7 +330,7 @@ var HiveViewModel = (function () {
     }
 
     self.remove = function (role) {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       self.isLoading(true);
       $.post("/security/api/hive/drop_sentry_role", {
         roleName: role.name
@@ -340,17 +340,17 @@ var HiveViewModel = (function () {
           vm.list_sentry_privileges_by_authorizable();
           $(document).trigger("removedRole");
         } else {
-          $(document).trigger("error", data.message);
+          huePubSub.publish('hue.global.error', {message: data.message});
         }
       }).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", xhr.responseText);
+        huePubSub.publish('hue.global.error', {message: xhr.responseText});
       }).always(function () {
         self.isLoading(false);
       });
     }
 
     self.savePrivileges = function (role) {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       $.post("/security/api/hive/save_privileges", {
         role: ko.mapping.toJSON(role)
       }, function (data) {
@@ -358,10 +358,10 @@ var HiveViewModel = (function () {
           vm.list_sentry_privileges_by_authorizable();
           $(document).trigger("createdRole");
         } else {
-          $(document).trigger("error", data.message);
+          huePubSub.publish('hue.global.error', {message: data.message});
         }
       }).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", xhr.responseText);
+        huePubSub.publish('hue.global.error', {message: xhr.responseText});
       });
     }
   }
@@ -804,7 +804,7 @@ var HiveViewModel = (function () {
           cache: false
         };
         $.ajax(request).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
         });
       }
       else {
@@ -1016,7 +1016,7 @@ var HiveViewModel = (function () {
         },
         success: function (data) {
           if (typeof data.status !== "undefined" && data.status == -1) {
-            $(document).trigger("error", data.message);
+            huePubSub.publish('hue.global.error', {message: data.message});
           }
           else {
             self.roles.removeAll();
@@ -1032,7 +1032,7 @@ var HiveViewModel = (function () {
           }
         }
       }).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", xhr.responseText);
+        huePubSub.publish('hue.global.error', {message: xhr.responseText});
       }).always(function () {
         self.isLoadingRoles(false);
       });
@@ -1064,7 +1064,7 @@ var HiveViewModel = (function () {
         },
         success: function (data) {
           if (typeof data.status !== "undefined" && data.status == -1) {
-            $(document).trigger("error", data.message);
+            huePubSub.publish('hue.global.error', {message: data.message});
           }
           else {
             role.privileges.removeAll();
@@ -1080,7 +1080,7 @@ var HiveViewModel = (function () {
           }
         }
       }).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", xhr.responseText);
+        huePubSub.publish('hue.global.error', {message: xhr.responseText});
       });
     };
 
@@ -1121,7 +1121,7 @@ var HiveViewModel = (function () {
     }
 
     self.grant_privilege = function () {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       $.ajax({
         type: "POST",
         url: "/security/api/hive/grant_privilege",
@@ -1131,16 +1131,16 @@ var HiveViewModel = (function () {
         },
         success: function (data) {
           if (data.status == 0) {
-            $(document).trigger("info", data.message);
+            huePubSub.publish('hue.global.info', { message: data.message });
             self.assist.refreshTree();
             self.clearTempRoles();
             $(document).trigger("createdRole");
           } else {
-            $(document).trigger("error", data.message);
+            huePubSub.publish('hue.global.error', {message: data.message});
           }
         }
       }).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", xhr.responseText);
+        huePubSub.publish('hue.global.error', {message: xhr.responseText});
       });
     }
 
@@ -1208,11 +1208,11 @@ var HiveViewModel = (function () {
             }
             self.assist.loadData(self.assist.growingTree());
           } else {
-            $(document).trigger("error", data.message);
+            huePubSub.publish('hue.global.error', {message: data.message});
           }
         }
       }).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", xhr.responseText);
+        huePubSub.publish('hue.global.error', {message: xhr.responseText});
       }).always(function () {
         self.isLoadingPrivileges(false);
       });
@@ -1237,7 +1237,7 @@ var HiveViewModel = (function () {
     }
 
     self.bulk_delete_privileges = function (norefresh) {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       var checkedPaths = self.assist.checkedItems();
       $.post("/security/api/hive/bulk_delete_privileges", {
         'authorizableHierarchy': ko.mapping.toJSON(_create_authorizable_from_ko()),
@@ -1250,15 +1250,15 @@ var HiveViewModel = (function () {
             $(document).trigger("deletedBulkPrivileges");
           }
         } else {
-          $(document).trigger("error", data.message);
+          huePubSub.publish('hue.global.error', {message: data.message});
         }
       }).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", xhr.responseText);
+        huePubSub.publish('hue.global.error', {message: xhr.responseText});
       });
     }
 
     self.bulk_add_privileges = function (role) {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       var checkedPaths = self.assist.checkedItems();
       $.post("/security/api/hive/bulk_add_privileges", {
         'privileges': ko.mapping.toJSON(self.assist.privileges),
@@ -1270,10 +1270,10 @@ var HiveViewModel = (function () {
           self.list_sentry_privileges_by_authorizable(); // Refresh
           $(document).trigger("addedBulkPrivileges");
         } else {
-          $(document).trigger("error", data.message);
+          huePubSub.publish('hue.global.error', {message: data.message});
         }
       }).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", xhr.responseText);
+        huePubSub.publish('hue.global.error', {message: xhr.responseText});
       });
     }
 

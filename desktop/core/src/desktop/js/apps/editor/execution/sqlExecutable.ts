@@ -39,6 +39,8 @@ import Executor from 'apps/editor/execution/executor';
 import sessionManager from 'apps/editor/execution/sessionManager';
 import dataCatalog from 'catalog/dataCatalog';
 import { ParsedSqlStatement } from 'parse/sqlStatementsParser';
+import { HueAlert } from 'reactComponents/GlobalAlert/types';
+import { GLOBAL_ERROR_TOPIC } from 'reactComponents/GlobalAlert/events';
 import { hueWindow } from 'types/types';
 import hueAnalytics from 'utils/hueAnalytics';
 import huePubSub from 'utils/huePubSub';
@@ -79,7 +81,7 @@ export interface SqlExecutableRaw extends ExecutableRaw {
 }
 
 const BATCHABLE_STATEMENT_TYPES =
-  /ALTER|ANALYZE|WITH|REFRESH|CREATE|DELETE|DROP|GRANT|INSERT|INVALIDATE|LOAD|SET|TRUNCATE|UPDATE|UPSERT|USE/i;
+  /ALTER|ANALYZE|WITH|REFRESH|CREATE|DELETE|DROP|GRANT|INSERT|INVALIDATE|LOAD|SET|TRUNCATE|UPDATE|FROM|UPSERT|USE/i;
 const SELECT_END_REGEX = /([^;]*)([;]?[^;]*)/;
 const ERROR_REGEX = /line ([0-9]+)(:([0-9]+))?/i;
 const TABLE_DDL_REGEX =
@@ -382,7 +384,9 @@ export default class SqlExecutable {
         this.executeEnded = Date.now();
         this.setStatus(queryStatus.status);
         if (queryStatus.message) {
-          huePubSub.publish('hue.error', queryStatus.message);
+          huePubSub.publish<HueAlert>(GLOBAL_ERROR_TOPIC, {
+            message: queryStatus.message
+          });
         }
         break;
       default:

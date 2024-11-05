@@ -229,7 +229,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
             </label>
             <!-- ko if: createWizard.source.path().length > 0 -->
               <a data-bind="storageContextPopover: { path: createWizard.source.path(), offset: { right: 5 } }" title="${ _('Preview') }" style="font-size: 14px" class="margin-left-10">
-                <i class="fa fa-fw fa-info"></i>
+                <i data-hue-analytics="importer:preview-path-btn-click" class="fa fa-fw fa-info"></i>
               </a>
             <!-- /ko -->
           </div>
@@ -237,7 +237,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
           <div data-bind="visible: createWizard.source.inputFormat() == 'localfile'">
               <form method="post" action="" enctype="multipart/form-data" id="uploadform">
                 <div >
-                    <input type="file" id="inputfile" name="inputfile" style="margin-left: 130px" accept=".csv, .xlsx">
+                    <input type="file" id="inputfile" name="inputfile" style="margin-left: 130px" accept=".csv, .xlsx, .xls">
                 </div>
             </form>
           </div>
@@ -626,6 +626,14 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
               <i class="fa fa-warning" style="color: #c09853"></i> ${ _('Does not exist') } <span data-bind="text: outputFormat"></span>
             </span>
           </div>
+
+          <!-- ko if: namespace().computes.length > 1 -->
+          <div class="control-group">
+            <label for="computeName" class="control-label"><div>${ _('Compute') }</div>
+              <select id="computeName" data-bind="selectize: namespace().computes, value: $parent.createWizard.source.selectedComputeId, optionsValue: 'name', optionsText: 'name'"></select>
+            </label>
+          </div>
+          <!-- /ko -->
         </div>
       </div>
 
@@ -636,14 +644,23 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
           <div class="card-body">
             <div class="control-group">
               <label for="destinationFormat" class="control-label"><div>${ _('Format') }</div>
+                ## we need only few options when isIceberg is selected and looks like ko.selectize.custom.js has some issue so adding this workaround
+                <!-- ko if: !isIceberg() -->
                 <select id="destinationFormat" data-bind="selectize: tableFormats, value: tableFormat, optionsValue: 'value', optionsText: 'name'"></select>
+                <!-- /ko -->
+                <!-- ko if: isIceberg() && $root.createWizard.source.sourceType() === 'hive' -->
+                <select id="destinationFormat" data-bind="selectize: [{value: 'parquet', name: 'Parquet'}, {'value': 'avro', 'name': 'Avro'}, {'value': 'orc', 'name': 'ORC'}], value: tableFormat, optionsValue: 'value', optionsText: 'name'"></select>
+                <!-- /ko -->
+                <!-- ko if: isIceberg() && $root.createWizard.source.sourceType() === 'impala' -->
+                <select id="destinationFormat" data-bind="selectize: [{value: 'parquet', name: 'Parquet'}], value: tableFormat, optionsValue: 'value', optionsText: 'name'"></select>
+                <!-- /ko -->
               </label>
             </div>
 
             <div class="control-group">
               <label class="control-label"><div>${ _('Extras') }</div>
                 <a href="javascript:void(0)" data-bind="css: { 'inactive-action': !showProperties() }, toggle: showProperties" title="${ _('Show extra properties') }">
-                  <i class="fa fa-sliders fa-padding-top"></i>
+                  <i data-hue-analytics="importer:show-extras-btn-click" class="fa fa-sliders fa-padding-top"></i>
                 </a>
               </label>
             </div>
@@ -651,12 +668,12 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
             <span data-bind="visible: showProperties">
               <div class="control-group">
                 <label class="checkbox inline-block" data-bind="visible: tableFormat() != 'kudu'">
-                  <input type="checkbox" data-bind="checked: useDefaultLocation"> ${_('Store in Default location')}
+                  <input data-hue-analytics="importer:store-in-default-localtion-checkbox-interaction" type="checkbox" data-bind="checked: useDefaultLocation, disable: isIceberg() || useCopy()"> ${_('Store in Default location')}
                 </label>
               </div>
               <div class="control-group" data-bind="visible: isTransactionalVisible">
                 <label class="checkbox inline-block">
-                  <input type="checkbox" data-bind="checked: isTransactional"> ${_('Transactional table')}
+                  <input type="checkbox" data-hue-analytics="importer:is-transactional-checkbox-interaction" data-bind="checked: isTransactional, disable: isIceberg() || useCopy()"> ${_('Transactional table')}
                 </label>
                 <label class="checkbox inline-block" title="${_('Full transactional support available in Hive with ORC')}">
                   <input type="checkbox" data-bind="checked: isInsertOnly, enable: isTransactionalUpdateEnabled"> ${_('Insert only')}
@@ -671,9 +688,25 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
 
               <div class="control-group">
                 <label class="checkbox inline-block" data-bind="visible: $root.createWizard.source.inputFormat() != 'manual'">
-                  <input type="checkbox" data-bind="checked: importData, disable: !useDefaultLocation() && $parent.createWizard.source.path() == nonDefaultLocation();"> ${_('Import data')}
+                  <input data-hue-analytics="importer:import-data-checkbox-interaction" type="checkbox" data-bind="checked: importData, disable: !useDefaultLocation() && $parent.createWizard.source.path() == nonDefaultLocation();"> ${_('Import data')}
                 </label>
               </div>
+
+              <div class="control-group" data-bind="visible: icebergEnabled && $root.createWizard.source.inputFormat() === 'file'">
+                <label class="checkbox inline-block">
+                  <input data-hue-analytics="importer:is-iceberg-checkbox-interaction" type="checkbox" data-bind="checked: isIceberg"> ${_('Iceberg table')}
+                </label>
+              </div>
+
+              <div class="control-group" data-bind="visible: !useDefaultLocation() && !isTransactional() && $root.createWizard.source.inputFormat() === 'file'">
+                <label class="checkbox inline-block">
+                  <input data-hue-analytics="importer:useCopy-checkbox-interaction" type="checkbox" data-bind="checked: useCopy"> ${_('Copy file')}
+                </label>
+                <a href="javascript:void(0)" style="display: inline" data-trigger="hover" data-toggle="popover" data-placement="right" rel="popover" title="${ _('Choosing this option will copy the file instead of moving it to the new location, and ensuring the original file remains unchanged.') }">
+                  <i class="fa fa-info-circle"></i>
+                </a>
+              </div>
+
               <div class="control-group">
                 <label><div>${ _('Description') }</div>
                     <input type="text" class="form-control input-xxlarge" data-bind="value: description, valueUpdate: 'afterkeydown'" placeholder="${ _('Description') }">
@@ -681,7 +714,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
               </div>
               <div class="control-group" data-bind="visible: $root.createWizard.source.inputFormat() == 'file'">
                 <label class="checkbox inline-block">
-                  <input type="checkbox" data-bind="checked: hasHeader"> ${_('Use first row as header')}
+                  <input data-hue-analytics="importer:use-first-row-as-header-interaction" type="checkbox" data-bind="checked: hasHeader"> ${_('Use first row as header')}
                 </label>
               </div>
               <div class="control-group" data-bind="visible: tableFormat() == 'text'">
@@ -719,11 +752,14 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
               <!-- ko if: tableFormat() != 'kudu' && $root.createWizard.source.inputFormat() != 'rdbms' -->
               <div class="inline-table">
                 <div class="form-inline" data-bind="foreach: partitionColumns">
-                  <a class="pointer pull-right margin-top-20" data-bind="click: function() { $parent.partitionColumns.remove($data); }"><i class="fa fa-minus"></i></a>
+                  <a class="pointer pull-right margin-top-20" data-bind="click: function() { 
+                    $parent.partitionColumns.remove($data);
+                    window.hueAnalytics.log('importer', 'remove-partiction-btn-click');
+                  }"><i class="fa fa-minus"></i></a>
                   <div data-bind="template: { name: 'table-field-template', data: $data }" class="margin-top-10 field inline-block"></div>
                   <div class="clearfix"></div>
                 </div>
-                <a data-bind="click: function() { partitionColumns.push($root.loadDefaultField({isPartition: true})); }" class="pointer" title="${_('Add Partition')}"><i class="fa fa-plus fa-padding-top"></i> ${_('Add partition')}</a>
+                <a data-hue-analytics="importer:add-partiction-btn-click" data-bind="click: function() { partitionColumns.push($root.loadDefaultField({isPartition: true})); }" class="pointer" title="${_('Add Partition')}"><i class="fa fa-plus fa-padding-top"></i> ${_('Add partition')}</a>
               </div>
               <!-- /ko -->
 
@@ -981,7 +1017,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
               <!-- ko ifnot: fieldEditorEnabled -->
                 ${_('Fields')} <!-- ko if: $root.createWizard.isGuessingFieldTypes --><i class="fa fa-spinner fa-spin"></i><!-- /ko -->
                 <a class="inactive-action pointer" data-bind="visible: columns().length > 0, publish: 'importer.show.bulkeditor'" href="javascript:void(0)">
-                  <i class="fa fa-edit"></i>
+                  <i data-hue-analytics="importer:bulk-field-editor-show" class="fa fa-edit"></i>
                 </a>
               <!-- /ko -->
             </h4>
@@ -1017,7 +1053,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
               <!-- ko if: $root.createWizard.source.inputFormat() === 'manual' -->
 
                 <form class="form-inline inline-table" data-bind="foreach: columns">
-                  <!-- ko if: ['table'].indexOf(outputFormat()) != -1 -->
+                  <!-- ko if: $parent.outputFormat() === 'table' -->
                     <a class="pointer pull-right margin-top-20" data-bind="click: function() { $parent.columns.remove($data); }">
                       <i class="fa fa-minus"></i>
                     </a>
@@ -1091,13 +1127,16 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
       <!-- /ko -->
 
       <!-- ko if: currentStep() == 1 -->
-      <button class="btn" data-bind="enable: !createWizard.isGuessingFormat() && createWizard.source.show(), click: function() { currentStep(2); }">
+      <button class="btn" data-bind="enable: !createWizard.isGuessingFormat() && createWizard.source.show(), click: function() { 
+        currentStep(2);
+        window.hueAnalytics.log('importer', 'next-btn-click/' +  createWizard?.source?.inputFormat());
+        }">
         ${_('Next')}
       </button>
       <!-- /ko -->
 
       <!-- ko if: currentStep() == 2 -->
-        <button class="btn btn-primary disable-feedback" data-bind="click: function() { createWizard.indexFile(); }, enable: createWizard.readyToIndex() && !createWizard.indexingStarted()">
+        <button data-hue-analytics="importer:submit-btn-click" class="btn btn-primary disable-feedback" data-bind="click: function() { createWizard.indexFile(); }, enable: createWizard.readyToIndex() && !createWizard.indexingStarted()">
           ${ _('Submit') } <i class="fa fa-spinner fa-spin" data-bind="visible: createWizard.indexingStarted"></i>
         </button>
 
@@ -1130,8 +1169,8 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
       <input type="text" class="input-xxlarge" placeholder="${ _('e.g. id, name, salary') }" data-bind="textInput: createWizard.destination.bulkColumnNames">
     </div>
     <div class="modal-footer">
-      <button class="btn" data-dismiss="modal" aria-hidden="true">${ _('Cancel') }</button>
-      <button class="btn btn-primary" data-bind="click: createWizard.destination.processBulkColumnNames">${ _('Change field names') }</button>
+      <button data-hue-analytics="importer:bulk-field-editor-cancel" class="btn" data-dismiss="modal" aria-hidden="true">${ _('Cancel') }</button>
+      <button data-hue-analytics="importer:bulk-field-editor-change" class="btn btn-primary" data-bind="click: createWizard.destination.processBulkColumnNames">${ _('Change field names') }</button>
     </div>
   </div>
 
@@ -1141,7 +1180,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
 <script type="text/html" id="table-field-template">
   <div>
     <label data-bind="visible: level() == 0 || ($parent.type() != 'array' && $parent.type() != 'map')">${ _('Name') }&nbsp;
-      <input type="text" class="input-large" placeholder="${ _('Field name') }" required data-bind="textInput: name" pattern="[a-zA-Z0-9_]+$" title="${ _('Only alphanumeric and underscore characters') }">
+      <input data-hue-analytics="importer:field-name-click" type="text" class="input-large" placeholder="${ _('Field name') }" required data-bind="textInput: name" pattern="^[a-zA-Z0-9_]+$" title="${ _('Only alphanumeric and underscore characters') }">
     </label>
 
     <label class="margin-left-5">${ _('Type') }&nbsp;
@@ -1167,7 +1206,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
     <!-- /ko -->
 
     <span data-bind="visible: level() == 0 || ($parent.type() != 'array' && $parent.type() != 'map')">
-      <a href="javascript:void(0)" title="${ _('Show field properties') }" data-bind="css: {'inactive-action': !showProperties()}, click: function() {showProperties(!showProperties()) }"><i class="fa fa-sliders"></i></a>
+      <a href="javascript:void(0)" title="${ _('Show field properties') }" data-bind="css: {'inactive-action': !showProperties()}, click: function() {showProperties(!showProperties()) }"><i data-hue-analytics="importer:toggle-field-properties" class="fa fa-sliders"></i></a>
 
       <span data-bind="visible: showProperties">
         <input type="text" class="input-medium margin-left-5" placeholder="${ _('Field comment') }" data-bind="value: comment">
@@ -1673,6 +1712,14 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
       self.sampleCols = ko.observableArray();
       self.namespace = wizard.namespace;
       self.compute = wizard.compute;
+      self.selectedComputeId = ko.observable();
+
+      self.selectedComputeId.subscribe(function (computeId) {
+        var selectedCompute = self.namespace().computes.find(function (currCompute) {
+          return currCompute.name == computeId;
+        })
+        self.compute(selectedCompute);
+      });
 
       var refreshThrottle = -1;
       var sampleColSubDisposals = [];
@@ -1765,6 +1812,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
       % endif
 
       self.inputFormat.subscribe(function(val) {
+        window.hueAnalytics.log('importer', 'source-type-selection/' + val);
         wizard.destination.columns.removeAll();
         if (self.sample()) {
           self.sample.removeAll();
@@ -1836,6 +1884,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
 
       // File
       self.path = ko.observable('');
+      self.file_type = ko.observable('');
       self.path.subscribe(function(val) {
         if (val) {
           wizard.guessFormat();
@@ -2016,7 +2065,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
             self.rdbmsDbIsValid(true);
             self.rdbmsDatabaseNames(resp.data);
           } else if (resp.status === 1) {
-            $(document).trigger("error", "${ _('Connection Failed: ') }" + resp.message);
+            huePubSub.publish('hue.global.error', {message: "${ _('Connection Failed: ') }" + resp.message});
             self.rdbmsDbIsValid(false);
           }
         }).always(function(){
@@ -2086,7 +2135,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
             if (resp.status === 0 && resp.hosts) {
               self.channelSourceHosts(resp.hosts);
             } else {
-              $(document).trigger("error", "${ _('Error getting hosts') }" + resp.message);
+              huePubSub.publish('hue.global.error', {message: "${ _('Error getting hosts') }" + resp.message});
             }
           });
         }
@@ -2095,7 +2144,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
       self.kafkaClusters = ko.observableArray(['localhost', 'demo.gethue.com']);
       self.kafkaSelectedCluster = ko.observable();
       self.kafkaSelectedCluster.subscribe(function(val) {
-        if (val) {
+        if (val && self.inputFormat() == 'stream') {
           wizard.guessFormat();
         }
       });
@@ -2173,14 +2222,14 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
         }
       });
       self.streamCheckConnection = function() {
-        $(".jHueNotify").remove();
+        huePubSub.publish('hide.global.alerts');
         $.post("${ url('indexer:get_db_component') }", {
           "source": ko.mapping.toJSON(self)
         }, function (resp) {
           if (resp.status === 0 && resp.data) {
             huePubSub.publish('notebook.task.submitted', resp);
           } else if (resp.status === 1) {
-            $(document).trigger("error", "${ _('Connection Failed: ') }" + resp.message);
+            huePubSub.publish('hue.global.error', {message: "${ _('Connection Failed: ') }" + resp.message});
             self.rdbmsDbIsValid(false);
           }
         });
@@ -2312,7 +2361,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
                 return {'name': config, 'value': config};
               }));
             } else {
-              $(document).trigger("error", data.message);
+              huePubSub.publish('hue.global.error', {message: data.message});
             }
           });
         }
@@ -2328,6 +2377,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
           wizard.guessFieldTypes();
           resizeElements();
         }
+        window.hueAnalytics.log('importer', 'destination-type-selection/' + newValue);
       });
       self.outputFormatsList = ko.observableArray([
           {'name': '${ _("Table") }', 'value': 'table'},
@@ -2540,8 +2590,15 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
         return self.outputFormat() === 'database' ? self.name() : (self.outputFormat() === 'table' && self.name().indexOf('.') > 0 ? self.name().split('.', 2)[0] : 'default');
       });
       self.tableFormat = ko.observable('text');
+      self.tableFormat.subscribe(function(value) {
+        window.hueAnalytics.log('importer', 'table-format-selection/' + value);
+      })
       self.KUDU_DEFAULT_RANGE_PARTITION_COLUMN = {values: [{value: ''}], name: 'VALUES', lower_val: 0, include_lower_val: '<=', upper_val: 1, include_upper_val: '<='};
       self.KUDU_DEFAULT_PARTITION_COLUMN = {columns: [], range_partitions: [self.KUDU_DEFAULT_RANGE_PARTITION_COLUMN], name: 'HASH', int_val: 16};
+
+
+      self.icebergEnabled = ko.observable(vm.sourceType == 'impala' || vm.sourceType == 'hive');
+      self.isIceberg = ko.observable(false);
 
       self.tableFormats = ko.pureComputed(function() {
         if (wizard.source.inputFormat() === 'stream') {
@@ -2585,7 +2642,13 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
       });
 
       self.importData = ko.observable(true);
+      self.importData.subscribe(function(val) {
+        window.hueAnalytics.log('importer', 'import-data/' + val);
+      })      
       self.useDefaultLocation = ko.observable(true);
+      self.useDefaultLocation.subscribe(function(val) {
+        window.hueAnalytics.log('importer', 'default-location/' + val);
+      })
       self.nonDefaultLocation = ko.observable('');
 
       var isTransactionalVisibleImpala = '${ impala_flags.is_transactional() }'.toLowerCase() == 'true';
@@ -2594,6 +2657,9 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
 
       self.isTransactionalVisible = ko.observable((vm.sourceType == 'impala' && isTransactionalVisibleImpala) || (vm.sourceType == 'hive' && isTransactionalVisibleHive));
       self.isTransactional = ko.observable(self.isTransactionalVisible());
+      self.isTransactional.subscribe(function(val) {
+        window.hueAnalytics.log('importer', 'is-transactional/' + val);
+      })   
       self.isInsertOnly = ko.observable(true); // Impala doesn't have yet full support.
       self.isTransactionalUpdateEnabled = ko.pureComputed(function() {
         var enabled = self.tableFormat() == 'orc' && (vm.sourceType == 'hive' || (vm.sourceType == 'impala' && transactionalDefaultType.length && transactionalDefaultType != 'insert_only'));
@@ -2602,6 +2668,23 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
         }
         return enabled;
       });
+      self.isIceberg.subscribe(function(val) {
+        if (val) {
+          self.useDefaultLocation(false);
+          self.isTransactional(false);
+          if ( ['avro', 'orc'].indexOf(self.tableFormat()) === -1  || vm.sourceType === 'impala') {
+            self.tableFormat('parquet');
+          }
+        }
+        else {
+          self.useDefaultLocation(true);
+          self.isTransactional(self.isTransactionalVisible());
+          self.tableFormat('text');
+        }
+        window.hueAnalytics.log('importer', 'is-iceberg/' + val);
+      });
+
+      self.useCopy = ko.observable(false);
 
       self.hasHeader = ko.observable(false);
 
@@ -2708,6 +2791,9 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
       self.fileType = ko.observable();
       self.fileType.subscribe(function (newType) {
         if (self.source.format()) {
+          if(self.source.format()?.type() !== newType?.name) {
+            window.hueAnalytics.log('importer', 'file-type-selected/' + newType?.name);
+          }
           self.source.format().type(newType.name);
         }
       });
@@ -2768,6 +2854,10 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
       });
       self.readyToIndex = ko.pureComputed(function () {
         var validFields = self.destination.columns().length || self.destination.outputFormat() === 'database';
+        var isValidColumnNames = self.destination.columns().every(function (column) {
+          return /^[a-zA-Z0-9_]+$/.test(column.name());
+        });
+  
         var validTableColumns = self.destination.outputFormat() !== 'table' || ($.grep(self.destination.columns(), function(column) {
             return column.name().length === 0;
           }).length === 0
@@ -2800,7 +2890,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
           }).length === 0
         ) || self.destination.indexerConfigSet();
 
-        return self.isValidDestination() && validFields && validTableColumns && validIndexFields && isTargetAlreadyExisting && isValidTable;
+        return self.isValidDestination() && validFields && validTableColumns && validIndexFields && isTargetAlreadyExisting && isValidTable && isValidColumnNames;
       });
 
       self.formatTypeSubscribed = false;
@@ -2834,7 +2924,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
           "fileFormat": ko.mapping.toJSON(self.source)
         }, function (resp) {
           if (resp.status !== 0) {
-            $(document).trigger("error", resp.message);
+            huePubSub.publish('hue.global.error', {message: resp.message});
           } else {
             var newFormat = ko.mapping.fromJS(new FileType(resp['type'], resp));
             self.source.format(newFormat);
@@ -2858,7 +2948,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
           self.isGuessingFormat(false);
           viewModel.wizardEnabled(true);
         }).fail(function (xhr) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
           viewModel.isLoading(false);
           self.isGuessingFormat(false);
         });
@@ -2879,7 +2969,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
           guessFieldTypesXhr = null;
         }).fail(function (xhr) {
           self.loadSampleData({sample_cols: [], columns: [], sample: []});
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
           self.isGuessingFieldTypes(false);
           viewModel.isLoading(false);
           guessFieldTypesXhr = null;
@@ -2926,7 +3016,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
         if (!self.readyToIndex()) {
           return;
         }
-        $(".jHueNotify").remove();
+        huePubSub.publish('hide.global.alerts');
 
         self.indexingStarted(true);
 % if not is_embeddable:
@@ -2938,11 +3028,13 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
           "destination": ko.mapping.toJSON(self.destination)
         }, function (resp) {
           if (resp.status !== 0) {
-            $(document).trigger("error", resp.message);
+            huePubSub.publish('hue.global.error', {message: resp.message});
             self.indexingStarted(false);
             self.isIndexing(false);
           } else if (resp.on_success_url) {
-            $.jHueNotify.info("${ _('Creation success.') }");
+            huePubSub.publish('hue.global.info', {
+              message: "${ _('Creation success.') }"
+            });
             if (resp.pubSubUrl) {
               huePubSub.publish(notebook.pubSubUrl);
             }
@@ -2953,7 +3045,8 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
             self.jobId(resp.handle.id);
             $('#importerNotebook').html($('#importerNotebook-progress').html());
 
-            self.editorVM = new window.NotebookViewModel(resp.history_uuid, '', {
+            self.editorVM = new window.NotebookViewModel({
+              editorId: resp.history_uuid,
               user: '${ user.username }',
               userId: ${ user.id },
               languages: [{name: "Java", type: "java"}, {name: "Hive SQL", type: "hive"}], // TODO reuse
@@ -3027,7 +3120,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
           }
           viewModel.isLoading(false);
         }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
           viewModel.isLoading(false);
           self.indexingStarted(false);
           self.isIndexing(false);
@@ -3042,15 +3135,21 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
           self.indexingStarted(false);
           if (resp.status === 0) {
             if (resp.history_uuid) {
-              $.jHueNotify.info("${ _('Task submitted') }");
+              huePubSub.publish('hue.global.info', {
+                message: "${ _('Task submitted') }"
+              });
               huePubSub.publish('notebook.task.submitted', resp);
             } else if (resp.on_success_url) {
               if (resp.pub_sub_url) {
                 huePubSub.publish(resp.pub_sub_url);
               }
-              $.jHueNotify.info("${ _('Creation success') }");
+              huePubSub.publish('hue.global.info', {
+                message: "${ _('Creation success') }"
+              });
               if (resp.errors && resp.errors.length) {
-                $.jHueNotify.warn("${ _('Skipped records: ') }" + resp.errors.join(', '));
+                huePubSub.publish('hue.global.warning', {
+                  message: "${ _('Skipped records: ') }" + resp.errors.join(', ')
+                });
               }
               huePubSub.publish('open.link', resp.on_success_url);
             } else if (resp.commands) {
@@ -3058,11 +3157,11 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
               $('#showCommandsModal').modal('show');
             }
           } else {
-            $(document).trigger("error", resp && resp.message ? resp.message : '${ _("Error importing") }');
+            huePubSub.publish('hue.global.error', {message: resp && resp.message ? resp.message : '${ _("Error importing") }'});
           }
         }).fail(function (xhr) {
           self.indexingStarted(false);
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
         });
 % endif
 
@@ -3184,7 +3283,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
       self.previousStep = function () {
         if (self.previousStepVisible()) {
           self.currentStep(self.currentStep() - 1);
-          hueAnalytics.log('importer', 'step/' + self.currentStep());
+          window.hueAnalytics.log('importer', 'back-btn-click/' +  self.createWizard?.source?.inputFormat() );
         }
       };
 
@@ -3224,6 +3323,10 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
 
       $(window).on('resize', resizeElements);
 
+      document.getElementById('inputfile').onclick = function () {
+        this.value = null;
+      };
+
       document.getElementById('inputfile').onchange = function () {
         upload();
       };
@@ -3233,8 +3336,15 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
         var files = $('#inputfile')[0].files[0];
         fd.append('file', files);
         var file_size = files.size;
-        if (file_size > 200000) {
-          $.jHueNotify.warn("${ _('File size exceeds the supported size (200 KB).') }");
+        if (file_size === 0) {
+          huePubSub.publish('hue.global.warning', {
+            message: "${ _('This file is empty, please select another file.') }"
+          });
+        }
+        else if (file_size > 200 * 1024) {          
+          huePubSub.publish('hue.global.warning', {
+            message: "${ _('File size exceeds the supported size (200 KB). Please use the S3, ABFS or HDFS browser to upload files.') }"
+          });
         } else {
           $.ajax({
             url:"/indexer/api/indexer/upload_local_file",
@@ -3245,6 +3355,7 @@ ${ commonheader(_("Importer"), "indexer", user, request, "60px") | n,unicode }
             processData:false,
             success:function (response) {
               viewModel.createWizard.source.path(response['local_file_url']);
+              viewModel.createWizard.source.file_type(response['file_type']);
             }
           });
         }

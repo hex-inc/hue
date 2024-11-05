@@ -21,26 +21,26 @@ import logging
 from azure.abfs.__init__ import strip_path, abfsdatetime_to_timestamp
 from django.utils.encoding import smart_str
 
-LOG = logging.getLogger(__name__)
-CHAR_TO_OCT = {"---": 0, "--x" : 1, "-w-": 2, "-wx": 3, "r--" : 4, "r-x" : 5, "rw-" : 6,"rwx": 7}
+LOG = logging.getLogger()
+CHAR_TO_OCT = {"---": 0, "--x": 1, "-w-": 2, "-wx": 3, "r--": 4, "r-x": 5, "rw-": 6, "rwx": 7}
 
 
 class ABFSStat(object):
 
-  def __init__(self, isDir, atime, mtime, size, path, owner = '', group = '', mode = None):
+  def __init__(self, isDir, atime, mtime, size, path, owner='', group='', mode=None):
     self.name = strip_path(path)
     self.path = path
     self.isDir = isDir
     self.type = 'DIRECTORY' if isDir else 'FILE'
     try:
-      self.atime = abfsdatetime_to_timestamp(atime) if atime else None
-      self.mtime = abfsdatetime_to_timestamp(mtime) if mtime else None
+      self.atime = abfsdatetime_to_timestamp(atime) if atime else 0
+      self.mtime = abfsdatetime_to_timestamp(mtime) if mtime else 0
     except:
       self.atime = 0
       self.mtime = 0
     self.size = size
-    self.user = owner
-    self.group = group
+    self.user = owner if owner else ''
+    self.group = group if group else ''
     self.mode = mode or (0o777 if isDir else 0o666)
     if self.isDir:
       self.mode |= stat.S_IFDIR
@@ -65,15 +65,15 @@ class ABFSStat(object):
     return False
 
   @classmethod
-  def for_root(cls,path):
+  def for_root(cls, path):
     return cls(True, 0, 0, 0, path)
 
   @classmethod
-  def for_filesystems(cls,headers,resp, scheme):
+  def for_filesystems(cls, headers, resp, scheme):
     return cls(True, headers['date'], resp['lastModified'], 0, scheme + resp['name'])
 
   @classmethod
-  def for_directory(cls,headers,resp, path):
+  def for_directory(cls, headers, resp, path):
     try:
       size = int(resp['contentLength'])
     except:
@@ -86,17 +86,17 @@ class ABFSStat(object):
       permissions = ABFSStat.char_permissions_to_oct_permissions(resp['permissions'])
     except:
       permissions = None
-    return cls(isDir, headers['date'], resp['lastModified'], size, path, resp.get('owner'), resp.get('group'), mode = permissions)
+    return cls(isDir, headers['date'], resp.get('lastModified'), size, path, resp.get('owner'), resp.get('group'), mode=permissions)
 
   @classmethod
-  def for_single(cls,resp, path):
+  def for_single(cls, resp, path):
     size = int(resp['Content-Length'])
     isDir = resp['x-ms-resource-type'] == 'directory'
     try:
       permissions = ABFSStat.char_permissions_to_oct_permissions(resp['x-ms-permissions'])
     except:
       permissions = None
-    return cls(isDir, resp['date'],resp['Last-Modified'], size, path, resp.get('x-ms-owner'), resp.get('x-ms-group'), mode = permissions)
+    return cls(isDir, resp['date'], resp['Last-Modified'], size, path, resp.get('x-ms-owner'), resp.get('x-ms-group'), mode=permissions)
 
   @classmethod
   def for_filesystem(cls, resp, path):

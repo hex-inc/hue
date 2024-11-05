@@ -14,6 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { AxiosResponseTransformer } from 'axios';
+
 import { Tags } from './GeneralDataCatalog';
 import { Cancellable, CancellablePromise } from 'api/cancellablePromise';
 import {
@@ -34,6 +36,7 @@ import DataCatalogEntry, {
   SourceMeta
 } from 'catalog/DataCatalogEntry';
 import { Cluster, Compute, Connector, Namespace } from 'config/types';
+import { findEditorConnector } from 'config/hueConfig';
 import { hueWindow } from 'types/types';
 import '../utils/json.bigDataParse';
 import sleep from 'utils/timing/sleep';
@@ -60,16 +63,17 @@ interface SampleFetchOptions extends SharedFetchOptions {
 }
 
 const ADD_TAGS_URL = '/metadata/api/catalog/add_tags';
-const AUTOCOMPLETE_URL_PREFIX = '/api/editor/autocomplete/';
-const CANCEL_STATEMENT_URL = '/api/editor/cancel_statement';
-const CHECK_STATUS_URL = '/api/editor/check_status';
+const AUTOCOMPLETE_URL_PREFIX = '/api/v1/editor/autocomplete/';
+const CANCEL_STATEMENT_URL = '/api/v1/editor/cancel_statement';
+const CHECK_STATUS_URL = '/api/v1/editor/check_status';
+const CLOSE_STATEMENT_URL = '/api/v1/editor/close_statement';
 const DELETE_TAGS_URL = '/metadata/api/catalog/delete_tags';
-const DESCRIBE_URL = '/api/editor/describe/';
-const FETCH_RESULT_DATA_URL = '/api/editor/fetch_result_data';
+const DESCRIBE_URL = '/api/v1/editor/describe/';
+const FETCH_RESULT_DATA_URL = '/api/v1/editor/fetch_result_data';
 const FIND_ENTITY_URL = '/metadata/api/catalog/find_entity';
 const LIST_TAGS_URL = '/metadata/api/catalog/list_tags';
 const METASTORE_TABLE_URL_PREFIX = '/metastore/table/';
-const SAMPLE_URL_PREFIX = '/api/editor/sample/';
+const SAMPLE_URL_PREFIX = '/api/v1/editor/sample/';
 const SEARCH_URL = '/desktop/api/search/entities';
 const UPDATE_PROPERTIES_URL = '/metadata/api/catalog/update_properties';
 
@@ -104,7 +108,7 @@ const performAnalyze = ({
     });
     try {
       const analyzeResponse = await post<DefaultApiResponse & { watch_url?: string }>(
-        `/api/${
+        `/api/v1/${
           entry.getConnector().id === 'hive' ? 'beeswax' : entry.getConnector().id
         }/analyze/${getEntryUrlPath(entry)}`,
         undefined,
@@ -158,7 +162,7 @@ export const fetchDescribe = ({
       {
         format: 'json',
         cluster: JSON.stringify(entry.compute),
-        source_type: entry.getConnector().id,
+        source_type: getAssistConnectorId(entry),
         connector: JSON.stringify(entry.getConnector())
       },
       {
@@ -202,7 +206,7 @@ export const fetchNamespaces = (
   connector: Connector,
   silenceErrors?: boolean
 ): CancellablePromise<Record<string, Namespace[]> & { dynamicClusters?: boolean }> =>
-  get(`/api/get_namespaces/${connector.id}`, undefined, { silenceErrors });
+  get(`/api/v1/get_namespaces/${connector.id}`, undefined, { silenceErrors });
 
 export const fetchNavigatorMetadata = ({
   entry,
@@ -399,6 +403,21 @@ export const fetchSample = ({
     let notebookJson: string | undefined = undefined;
     let snippetJson: string | undefined = undefined;
 
+    const closeQuery = async () => {
+      if (notebookJson) {
+        try {
+          await post(
+            CLOSE_STATEMENT_URL,
+            {
+              notebook: notebookJson,
+              snippet: snippetJson
+            },
+            { silenceErrors: true }
+          );
+        } catch (err) {}
+      }
+    };
+
     const cancelQuery = async () => {
       if (notebookJson) {
         try {
@@ -432,7 +451,7 @@ export const fetchSample = ({
       {
         notebook: {},
         snippet: JSON.stringify({
-          type: entry.getConnector().id,
+          type: getAssistConnectorId(entry),
           compute: entry.compute
         }),
         async: true,
@@ -467,6 +486,7 @@ export const fetchSample = ({
           data: sampleResponse.rows,
           meta: sampleResponse.full_headers || []
         });
+        closeQuery();
       } else {
         const statusPromise = whenAvailable({
           notebookJson: notebookJson,
@@ -481,19 +501,14 @@ export const fetchSample = ({
 
         if (resultStatus.status !== 'available') {
           reject();
+          closeQuery();
           return;
         }
         if (queryResult.result?.handle && typeof resultStatus.has_result_set !== 'undefined') {
           queryResult.result.handle.has_result_set = resultStatus.has_result_set;
         }
         snippetJson = JSON.stringify(queryResult);
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        const transformResponse = (response: unknown) => {
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
-          return JSON.bigdataParse(response);
-        };
+        const transformResponse: AxiosResponseTransformer = response => JSON.bigdataParse(response);
         const resultPromise = post<SampleResponse>(
           FETCH_RESULT_DATA_URL,
           {
@@ -515,6 +530,7 @@ export const fetchSample = ({
         };
 
         resolve(sample);
+        closeQuery();
         cancellablePromises.pop();
 
         const closeSessions = (<hueWindow>window).CLOSE_SESSIONS;
@@ -539,6 +555,7 @@ export const fetchSample = ({
       }
     } catch (err) {
       reject();
+      closeQuery();
     }
   });
 
@@ -551,7 +568,7 @@ export const fetchSourceMetadata = ({
     {
       notebook: {},
       snippet: JSON.stringify({
-        type: entry.getConnector().id,
+        type: getAssistConnectorId(entry),
         source: 'data'
       }),
       operation: entry.isModel() ? 'model' : 'default',
@@ -588,6 +605,18 @@ interface SearchOptions {
 }
 
 type SearchResponse = { entities?: NavigatorMeta[] } | undefined;
+
+// this is a workaround for hplsql describe not working
+const getAssistConnectorId = (entry: DataCatalogEntry): string | number => {
+  const connector = entry.getConnector();
+  if (connector.dialect === 'hplsql') {
+    const hiveConnector = findEditorConnector(connector => connector.dialect === 'hive');
+    if (hiveConnector) {
+      return hiveConnector.id;
+    }
+  }
+  return connector.id;
+};
 
 export const searchEntities = ({
   limit,

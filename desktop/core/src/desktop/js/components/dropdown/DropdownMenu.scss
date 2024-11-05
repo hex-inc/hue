@@ -16,7 +16,7 @@
  limitations under the License.
 */
 
-@import '../styles/colors';
+@import '../styles/variables';
 
 .hue-dropdown-menu {
   .hue-dropdown-menu-inner {
@@ -24,7 +24,6 @@
     max-width: 250px;
     min-height: 34px;
     max-height: 200px;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden auto;
   }
 }

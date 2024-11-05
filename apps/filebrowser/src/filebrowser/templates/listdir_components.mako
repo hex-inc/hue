@@ -22,7 +22,7 @@ from django.template.defaultfilters import urlencode, stringformat, filesizeform
 from desktop.lib.django_util import reverse_with_get, extract_field_data
 from django.utils.encoding import smart_str
 
-from filebrowser.conf import ENABLE_EXTRACT_UPLOADED_ARCHIVE
+from filebrowser.conf import ENABLE_EXTRACT_UPLOADED_ARCHIVE, FILE_UPLOAD_CHUNK_SIZE, CONCURRENT_MAX_CONNECTIONS, MAX_FILE_SIZE_UPLOAD_LIMIT
 
 if sys.version_info[0] > 2:
   from django.utils.translation import gettext as _
@@ -180,11 +180,11 @@ else:
       <h2 class="modal-title">${ _('Confirm Delete') }</h2>
     </div>
     <div class="modal-body">
-      <!-- ko if: isS3() && isS3Root() -->
+      <!-- ko if: (isS3() && isS3Root()) || (isGS() && isGSRoot()) -->
       <p>${_('Are you sure you want to delete these buckets?')}</p>
       <p class="muted">${_('Deleting a bucket will delete all of its contents and release the bucket name to be reserved by others.')}</p>
       <!-- /ko -->
-      <!-- ko ifnot: isS3() && isS3Root() -->
+      <!-- ko ifnot: (isS3() && isS3Root()) && (isGS() && isGSRoot()) -->
       <!-- ko ifnot: $root.skipTrash -->
       <p>${_('Are you sure you want to delete these files?')}</p>
       <!-- /ko -->
@@ -354,23 +354,23 @@ else:
           <tbody>
             <tr>
               <td><strong>${_('Read')}</strong></td>
-              <td class="center"><input type="checkbox" data-bind="attr: {checked: selectedFile.mode }" checked="" name="user_read"></td>
-              <td class="center"><input type="checkbox" data-bind="attr: {checked: selectedFile.mode }" checked="" name="group_read"></td>
-              <td class="center"><input type="checkbox" data-bind="attr: {checked: selectedFile.mode }" checked="" name="other_read"></td>
+              <td class="center"><input type="checkbox" name="user_read"></td>
+              <td class="center"><input type="checkbox" name="group_read"></td>
+              <td class="center"><input type="checkbox" name="other_read"></td>
               <td colspan="2">&nbsp;</td>
             </tr>
             <tr>
               <td><strong>${_('Write')}</strong></td>
-              <td class="center"><input type="checkbox" data-bind="attr: {checked: selectedFile.mode }" checked="" name="user_write"></td>
-              <td class="center"><input type="checkbox" data-bind="attr: {checked: selectedFile.mode }" checked="" name="group_write"></td>
-              <td class="center"><input type="checkbox" data-bind="attr: {checked: selectedFile.mode }" checked="" name="other_write"></td>
+              <td class="center"><input type="checkbox" name="user_write"></td>
+              <td class="center"><input type="checkbox" name="group_write"></td>
+              <td class="center"><input type="checkbox" name="other_write"></td>
               <td colspan="2">&nbsp;</td>
             </tr>
             <tr>
               <td><strong>${_('Execute')}</strong></td>
-              <td class="center"><input type="checkbox" checked="" name="user_execute"></td>
-              <td class="center"><input type="checkbox" checked="" name="group_execute"></td>
-              <td class="center"><input type="checkbox" checked="" name="other_execute"></td>
+              <td class="center"><input type="checkbox" name="user_execute"></td>
+              <td class="center"><input type="checkbox" name="group_execute"></td>
+              <td class="center"><input type="checkbox" name="other_execute"></td>
               <td colspan="2">&nbsp;</td>
             </tr>
             <tr>
@@ -412,7 +412,7 @@ else:
           <span id="moveNameRequiredAlert" class="hide label label-important">${_('Required')}</span>
         </div>
         <a class="btn" onclick="$('#moveModal').modal('hide');">${_('Cancel')}</a>
-        <input class="btn btn-primary" type="submit" value="${_('Move')}"/>
+        <input data-bind="enable: $root.enableMoveButton()" class="btn btn-primary" type="submit" value="${_('Move')}"/>
       </div>
     </div>
   </form>
@@ -434,7 +434,7 @@ else:
           <span id="copyNameRequiredAlert" class="hide label label-important">${_('Required')}</span>
         </div>
         <a class="btn" onclick="$('#copyModal').modal('hide');">${_('Cancel')}</a>
-        <input class="btn btn-primary" type="submit" value="${_('Copy')}"/>
+        <input data-bind="enable: $root.enableCopyButton()" class="btn btn-primary" type="submit" value="${_('Copy')}"/>
       </div>
     </div>
   </form>
@@ -461,26 +461,32 @@ else:
     <div id="createDirectoryModal" class="modal hide fade">
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal" aria-label="${ _('Close') }"><span aria-hidden="true">&times;</span></button>
-        <!-- ko if: (!isS3() && !isABFS()) || (isS3() && !isS3Root()) || (isABFS() && !isABFSRoot()) -->
+        <!-- ko if: (!isS3() && !isGS() && !isABFS() && !isOFS()) || (isS3() && !isS3Root()) || (isGS() && !isGSRoot()) || (isABFS() && !isABFSRoot()) || (isOFS() && !isOFSServiceID() && !isOFSVol())  -->
         <h2 class="modal-title">${_('Create Directory')}</h2>
         <!-- /ko -->
-        <!-- ko if: isS3() && isS3Root() -->
+        <!-- ko if: (isS3() && isS3Root()) || (isGS() && isGSRoot()) || (isOFS() && isOFSVol()) -->
         <h2 class="modal-title">${_('Create Bucket')}</h2>
         <!-- /ko -->
         <!-- ko if: isABFS() && isABFSRoot() -->
         <h2 class="modal-title">${_('Create File System')}</h2>
         <!-- /ko -->
+        <!-- ko if: isOFS() && isOFSServiceID() -->
+        <h2 class="modal-title">${_('Create Volume')}</h2>
+        <!-- /ko -->
       </div>
       <div class="modal-body">
         <label>
-          <!-- ko if: (!isS3() && !isABFS()) || (isS3() && !isS3Root()) || (isABFS() && !isABFSRoot()) -->
+          <!-- ko if: (!isS3() && !isGS() && !isABFS() && !isOFS()) || (isS3() && !isS3Root()) || (isGS() && !isGSRoot()) || (isABFS() && !isABFSRoot()) || (isOFS() && !isOFSServiceID() && !isOFSVol()) -->
           ${_('Directory Name')}
           <!-- /ko -->
-          <!-- ko if: isS3() && isS3Root() -->
+          <!-- ko if: (isS3() && isS3Root()) || (isGS() && isGSRoot()) || (isOFS() && isOFSVol()) -->
           ${_('Bucket Name')}
           <!-- /ko -->
           <!-- ko if: isABFS() && isABFSRoot() -->
           ${_('File System Name')}
+          <!-- /ko -->
+          <!-- ko if: isOFS() && isOFSServiceID() -->
+          ${_('Volume Name')}
           <!-- /ko -->
           <input id="newDirectoryNameInput" name="name" value="" type="text" class="input-xlarge"/></label>
           <input type="hidden" name="path" data-bind="value: currentPath"/>
@@ -494,6 +500,12 @@ else:
         </div>
         <div id="smallFileSystemNameAlert" class="hide" style="position: absolute; left: 10px;">
           <span class="label label-important"><span class="newName"></span> ${_('File system requires namesize to be 3 or more characters')}</span>
+        </div>
+        <div id="volumeBucketNameAlert" class="hide" style="position: absolute; left: 10px;">
+          <span class="label label-important"><span class="newName"></span> ${_('Volume and Bucket name should be 3 to 63 characters.')}</span>
+        </div>
+        <div id="upperCaseVolumeBucketNameAlert" class="hide" style="position: absolute; left: 10px;">
+          <span class="label label-important"><span class="newName"></span> ${_('Upper case characters are not supported for Volume and Bucket names.')}</span>
         </div>
         <a class="btn" href="#" data-dismiss="modal">${_('Cancel')}</a>
         <input class="btn btn-primary" type="submit" value="${_('Create')}" />
@@ -575,12 +587,12 @@ else:
   <!-- actions context menu -->
   <ul class="context-menu dropdown-menu">
   <!-- ko ifnot: $root.inTrash -->
-    <li data-bind="visible: (!isS3() && !isABFS()) || (isS3() && !isS3Root()) || (isABFS() && !isABFSRoot()), css: {'disabled': $root.selectedFiles().length != 1 || isCurrentDirSelected().length > 0}">
+    <li data-bind="visible: (!isS3() && !isGS() && !isABFS() && !isOFS()) || (isS3() && !isS3Root()) || (isGS() && !isGSRoot()) || (isABFS() && !isABFSRoot()) || (isOFS() && !isOFSServiceID() && !isOFSVol()), css: {'disabled': $root.selectedFiles().length != 1 || isCurrentDirSelected().length > 0}">
     <a href="javascript: void(0)" title="${_('Rename')}" data-bind="click: ($root.selectedFiles().length == 1 && isCurrentDirSelected().length == 0) ? $root.renameFile: void(0)"><i class="fa fa-fw fa-font"></i>
     ${_('Rename')}</a></li>
-    <li data-bind="visible: (!isS3() && !isABFS()) || (isS3() && !isS3Root()) || (isABFS() && !isABFSRoot()), css: {'disabled': $root.selectedFiles().length == 0 || isCurrentDirSelected().length > 0}">
+    <li data-bind="visible: (!isS3() && !isGS() &&  !isABFS() && !isOFS()) || (isS3() && !isS3Root()) || (isGS() && !isGSRoot()) || (isABFS() && !isABFSRoot()) || (isOFS() && !isOFSServiceID() && !isOFSVol()), css: {'disabled': $root.selectedFiles().length == 0 || isCurrentDirSelected().length > 0}">
     <a href="javascript: void(0)" title="${_('Move')}" data-bind="click: ( $root.selectedFiles().length > 0 && isCurrentDirSelected().length == 0) ? $root.move: void(0)"><i class="fa fa-fw fa-random"></i> ${_('Move')}</a></li>
-    <li data-bind="visible: (!isS3() && !isABFS()) || (isS3() && !isS3Root()) || (isABFS() && !isABFSRoot()), css: {'disabled': $root.selectedFiles().length == 0 || isCurrentDirSelected().length > 0}">
+    <li data-bind="visible: (!isS3() && !isGS() && !isABFS() && !isOFS()) || (isS3() && !isS3Root()) || (isGS() && !isGSRoot()) || (isABFS() && !isABFSRoot()) || (isOFS() && !isOFSServiceID() && !isOFSVol()), css: {'disabled': $root.selectedFiles().length == 0 || isCurrentDirSelected().length > 0}">
     <a href="javascript: void(0)" title="${_('Copy')}" data-bind="click: ($root.selectedFiles().length > 0 && isCurrentDirSelected().length == 0) ? $root.copy: void(0)"><i class="fa fa-fw fa-files-o"></i> ${_('Copy')}</a></li>
     % if show_download_button:
     <li data-bind="css: {'disabled': $root.inTrash() || $root.selectedFiles().length != 1 || selectedFile().type != 'file'}">
@@ -637,7 +649,7 @@ else:
   <div id="submit-wf-modal" class="modal hide"></div>
 
   <script id="fileTemplate" type="text/html">
-    <tr class="row-animated" style="cursor: pointer" data-bind="visible: !(name == '..' && window.RAZ_IS_ENABLED), drop: { enabled: name !== '.' && type !== 'file' && (!$root.isS3() || ($root.isS3() && !$root.isS3Root())), value: $data }, event: { mouseover: toggleHover, mouseout: toggleHover, contextmenu: showContextMenu }, click: $root.viewFile, css: { 'row-selected': selected(), 'row-highlighted': highlighted(), 'row-deleted': deleted() }">
+    <tr class="row-animated" style="cursor: pointer" data-bind="visible: !(name == '..' && window.RAZ_IS_ENABLED), drop: { enabled: name !== '.' && type !== 'file' && ((!$root.isS3() || ($root.isS3() && !$root.isS3Root())) || (!$root.isGS() || ($root.isGS() && !$root.isGSRoot()))), value: $data }, event: { mouseover: toggleHover, mouseout: toggleHover, contextmenu: showContextMenu }, click: $root.viewFile, css: { 'row-selected': selected(), 'row-highlighted': highlighted(), 'row-deleted': deleted() }">
       <td class="center" data-bind="click: name !== '..' ? handleSelect : void(0)" style="cursor: default">
         <div data-bind="multiCheck: '#fileBrowserTable', visible: name != '..', css: { 'hue-checkbox': name != '..', 'fa': name != '..', 'fa-check': selected }"></div>
       </td>
@@ -651,7 +663,7 @@ else:
         <a href="#" data-bind="click: $root.viewFile"><i class="fa fa-level-up"></i></a>
         <!-- /ko -->
         <!-- ko if: name != '..' -->
-        <strong><a href="#" class="draggable-fb" data-bind="drag: { enabled: (!$root.isS3() || ($root.isS3() && !$root.isS3Root())), value: $data }, click: $root.viewFile, text: name, attr: { 'draggable': $.inArray(name, ['.', '..', '.Trash']) === -1 && !isBucket()}"></a></strong>
+        <strong><a href="#" class="draggable-fb" data-bind="drag: { enabled: (!$root.isS3() || ($root.isS3() && !$root.isS3Root()) || (!$root.isGS() || ($root.isGS() && !$root.isGSRoot()))), value: $data }, click: $root.viewFile, text: name, attr: { 'draggable': $.inArray(name, ['.', '..', '.Trash']) === -1 && !isBucket()}"></a></strong>
         <!-- /ko -->
       </td>
       <td>
@@ -676,15 +688,41 @@ else:
         % endif
       </td>
       <td>
-        <span data-bind="text: permissions, visible: $root.isS3() || !selected() || $root.isCurrentDirSentryManaged() || isSentryManaged"></span>
+        <span data-bind="text: permissions, visible: $root.isS3() || $root.isGS() || !selected() || $root.isCurrentDirSentryManaged() || isSentryManaged"></span>
         <a href="#" rel="tooltip" title="${_('Change permissions')}"
-            data-bind="text: permissions, visible: !$root.isS3() && !$root.inTrash() && selected() && !$root.isCurrentDirSentryManaged() && !isSentryManaged, click: $root.changePermissions" data-original-title="${_('Change permissions')}"></a>
+            data-bind="text: permissions, visible: !$root.isS3() && !$root.isGS() && !$root.inTrash() && selected() && !$root.isCurrentDirSentryManaged() && !isSentryManaged, click: $root.changePermissions" data-original-title="${_('Change permissions')}"></a>
       </td>
       <td data-bind="text: stats.mtime" style="white-space: nowrap;"></td>
     </tr>
   </script>
 
   <script src="${ static('desktop/ext/js/datatables-paging-0.1.js') }" type="text/javascript" charset="utf-8"></script>
+
+  <script type="text/template" id="qq-template">
+    <div class="qq-uploader-selector" style="margin-left: 10px">
+        <div class="qq-upload-drop-area-selector" qq-hide-dropzone><span>${_('Drop the files here to upload')}</span></div>
+        <div class="qq-upload-button-selector qq-no-float">${_('Select files')}</div> &nbsp;
+        <span class="muted">${_('or drag and drop them here')}</span> &nbsp;
+        <span class="muted free-space-info"></span>
+
+        <ul class="qq-upload-list-selector qq-upload-files unstyled qq-no-float" style="margin-right: 0;">
+            <li>
+                <span class="qq-upload-spinner-selector hide" style="display:none"></span>
+                <div class="progress-row dz-processing">
+                    <span class="break-word qq-upload-file-selector"></span>
+                    <div class="pull-right">
+                        <span class="qq-upload-file-selector" style="display:block"></span>
+                        <span class="muted qq-upload-size-selector"></span>&nbsp;&nbsp;
+                        <a href="#" title="${_('Cancel')}" class="complex-layout"><i class="fa fa-fw fa-times qq-upload-cancel-selector"></i></a>
+                        <span class="qq-upload-done-selector" style="display:none"><i class="fa fa-fw fa-check muted"></i></span>
+                        <span class="qq-upload-failed-text">${_('Failed')}</span>
+                    </div>
+                    <div class="progress-row-bar" style="width: 0%;"></div>
+                </div>
+            </li>
+        </ul>
+    </div>
+  </script>
 
 
   <script>
@@ -763,7 +801,7 @@ else:
           });
         },
         error: function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
           resetPrimaryButtonsStatus();
         }
       });
@@ -799,16 +837,6 @@ else:
       var sizes = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
       var i = Math.floor(Math.log(bytes) / Math.log(k));
       return (bytes / Math.pow(k, i)).toPrecision(dm) + ' ' + sizes[i];
-    }
-
-    var updateHash = function (hash) {
-      hash = encodeURI(decodeURIComponent(hash));
-      %if not is_embeddable:
-      window.location.hash = hash;
-      %else:
-      hueUtils.changeURL('#' + hash);
-      huePubSub.publish('fb.update.hash');
-      %endif
     }
 
     var Page = function (page) {
@@ -854,7 +882,7 @@ else:
           replication: file.stats.replication
         },
         isBucket: ko.pureComputed(function(){
-          return file.path.toLowerCase().indexOf('s3a://') == 0 && file.path.substr(6).indexOf('/') == -1
+          return (file.path.toLowerCase().indexOf('s3a://') == 0 && file.path.substr(6).indexOf('/') == -1) || (file.path.toLowerCase().indexOf('gs://') == 0 && file.path.substr(5).indexOf('/') == -1)
         }),
         selected: ko.observable(file.highlighted && fileBrowserViewModel.isArchive(file.name) || false),
         highlighted: ko.observable(file.highlighted || false),
@@ -916,11 +944,11 @@ else:
               if (this.url == null || this.url == "") {
                 // forcing root on empty breadcrumb url
                 this.url = "/";
-              }
-
-              fileBrowserViewModel.targetPageNum(1);
-              fileBrowserViewModel.targetPath("${url('filebrowser:filebrowser.views.view', path='')}" + stripHashes(this.url));
-              updateHash(this.url);
+              }              
+              fileBrowserViewModel.targetPageNum(1);              
+              const pathPrefix = "${url('filebrowser:filebrowser.views.view', path='')}";
+              huePubSub.publish('open.filebrowserlink', { pathPrefix, decodedPath: this.url, fileBrowserModel: fileBrowserViewModel});
+              window.hueAnalytics.log('filebrowser', 'directory-breadcrumb-navigation');             
             }
             else {
               window.open($(e.target).attr('href'));
@@ -943,6 +971,8 @@ else:
       self.searchQuery = ko.observable("");
       self.skipTrash = ko.observable(false);
       self.enableFilterAfterSearch = true;
+      self.enableMoveButton = ko.observable(false);
+      self.enableCopyButton = ko.observable(false);
       self.isCurrentDirSentryManaged = ko.observable(false);
       self.errorMessage = ko.observable("");
       self.pendingUploads = ko.observable(0);
@@ -1055,12 +1085,17 @@ else:
       };
 
       self.currentPath = ko.observable(currentDirPath);
-      self.currentPath.subscribe(function (path) {
+
+      self.currentPath.subscribe(function (path) {        
         $(document).trigger('currPathLoaded', { path: path });
       });
 
       self.isS3 = ko.pureComputed(function () {
         return self.currentPath().toLowerCase().indexOf('s3a://') === 0;
+      });
+
+      self.isGS = ko.pureComputed(function () {
+        return self.currentPath().toLowerCase().indexOf('gs://') === 0;
       });
 
       self.isAdls = ko.pureComputed(function () {
@@ -1069,6 +1104,14 @@ else:
 
       self.isABFS = ko.pureComputed(function () {
         return self.currentPath().toLowerCase().indexOf('abfs://') === 0;
+      });
+
+      self.isOFS = ko.pureComputed(function () {
+        return self.currentPath().toLowerCase().indexOf('ofs://') === 0;
+      });
+
+      self.isTaskServerEnabled = ko.computed(function() {
+        return window.getLastKnownConfig().hue_config.enable_chunked_file_uploader && window.getLastKnownConfig().hue_config.enable_task_server;
       });
 
       self.scheme = ko.pureComputed(function () {
@@ -1082,6 +1125,10 @@ else:
           return 'adls';
         } else if (scheme === 's3a' ){
           return 's3';
+        } else if (scheme === 'gs' ){
+          return 'gs';
+        } else if (scheme === 'ofs' ){
+          return 'ofs';
         } else if (!scheme || scheme == 'hdfs') {
           return 'hdfs';
         } else {
@@ -1093,10 +1140,14 @@ else:
         var path = path && path.toLowerCase();
         if (path.indexOf('s3a://') >= 0) {
           return 's3a://';
+        } else if (path.indexOf('gs://') >= 0) {
+          return 'gs://';
         } else if (path.indexOf('adl:/') >= 0) {
           return 'adl:/';
         } else if (path.indexOf('abfs://') >= 0) {
           return 'abfs://';
+        } else if (path.indexOf('ofs://') >= 0) {
+          return 'ofs://';
         } else {
           return '/';
         }
@@ -1115,13 +1166,13 @@ else:
         return currentPath.indexOf('/') === 0 || currentPath.indexOf('hdfs') === 0
       });
       self.isCompressEnabled = ko.pureComputed(function () {
-        return !self.isS3() && !self.isAdls() && !self.isABFS();
+        return !self.isS3() && !self.isGS() && !self.isAdls() && !self.isABFS() && !self.isOFS();
       });
       self.isSummaryEnabled = ko.pureComputed(function () {
-        return self.isHdfs();
+        return self.isHdfs() || self.isOFS();
       });
       self.isPermissionEnabled = ko.pureComputed(function () {
-        return !self.isS3() && !self.isABFSRoot();
+        return !self.isS3() && !self.isGS() && !self.isABFSRoot() && !self.isOFS();
       });
       self.isReplicationEnabled = ko.pureComputed(function () {
         return self.isHdfs();
@@ -1133,12 +1184,34 @@ else:
         }
       });
 
+      self.isGS.subscribe(function (newVal) {
+        if (newVal) {
+          huePubSub.publish('update.autocompleters');
+        }
+      });
+
       self.isS3Root = ko.pureComputed(function () {
         return self.isS3() && self.currentPath().toLowerCase() === 's3a://';
       });
 
+      self.isGSRoot = ko.pureComputed(function () {
+        return self.isGS() && self.currentPath().toLowerCase() === 'gs://';
+      });
+
       self.isABFSRoot = ko.pureComputed(function () {
         return self.isABFS() && self.currentPath().toLowerCase() === 'abfs://';
+      });
+
+      self.isOFSRoot = ko.pureComputed(function () {
+        return self.isOFS() && self.currentPath().toLowerCase() === 'ofs://';
+      });
+
+      self.isOFSServiceID = ko.pureComputed(function () {
+        return self.isOFS() && self.currentPath().split("/").length === 3 && self.currentPath().split("/")[2] !== '';
+      });
+
+      self.isOFSVol = ko.pureComputed(function () {
+        return self.isOFS() && self.currentPath().split("/").length === 4 && self.currentPath().split("/")[3] !== '';
       });
 
       self.inTrash = ko.computed(function() {
@@ -1162,16 +1235,16 @@ else:
       self.showSummary = function () {
         self.isLoadingSummary(true);
         $("#contentSummaryModal").modal("show");
-        $.getJSON("${url('filebrowser:content_summary', path='')}" + self.selectedFile().path, function (data) {
+        $.getJSON("${url('filebrowser:content_summary', path='')}" + encodeURIComponent(self.selectedFile().path), function (data) {
           if (data.status == 0) {
             self.contentSummary(ko.mapping.fromJS(data.summary));
             self.isLoadingSummary(false);
           } else {
-            $(document).trigger("error", data.message);
+            huePubSub.publish('hue.global.error', {message: data.message});
             $("#contentSummaryModal").modal("hide");
           }
         }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
           $("#contentSummaryModal").modal("hide");
         });
       }
@@ -1182,10 +1255,10 @@ else:
 
       self.retrieveData = function (clearAssistCache) {
         self.isLoading(true);
-
-        $.getJSON(self.targetPath() + (self.targetPath().indexOf('?') > 0 ? '&' : '?') + "pagesize=" + self.recordsPerPage() + "&pagenum=" + self.targetPageNum() + "&filter=" + self.searchQuery() + "&sortby=" + self.sortBy() + "&descending=" + self.sortDescending() + "&format=json", function (data) {
+        const encodedSearchFilter = encodeURIComponent(self.searchQuery());
+        $.getJSON(self.targetPath() + (self.targetPath().indexOf('?') > 0 ? '&' : '?') + "pagesize=" + self.recordsPerPage() + "&pagenum=" + self.targetPageNum() + "&filter=" + encodedSearchFilter + "&sortby=" + self.sortBy() + "&descending=" + self.sortDescending() + "&format=json", function (data) {
           if (data.error){
-            $(document).trigger("error", data.error);
+            huePubSub.publish('hue.global.error', {message: data.error});
             self.isLoading(false);
             return false;
           }
@@ -1322,6 +1395,7 @@ else:
 
       self.searchQuery.subscribe(function (newValue) {
         if (newValue !== '' || self.enableFilterAfterSearch) {
+          window.hueAnalytics.log('filebrowser', newValue === '' ? 'search-file-name-clear' : 'search-file-name');
           self.filter();
         }
         self.enableFilterAfterSearch = true;
@@ -1340,7 +1414,6 @@ else:
             e.preventDefault();
             fileBrowserViewModel.targetPageNum(1);
             fileBrowserViewModel.targetPath("${url('filebrowser:filebrowser.views.view', path='')}?" + folderPath);
-            updateHash('');
             fileBrowserViewModel.retrieveData();
           }
           else {
@@ -1351,6 +1424,7 @@ else:
 
       self.openHome = function (vm, e) {
         self.openDefaultFolder(vm, e, 'default_to_home');
+        window.hueAnalytics.log('filebrowser', 'home-btn-click');
       }
 
       self.openTrash = function (vm, e) {
@@ -1359,28 +1433,23 @@ else:
 
       self.viewFile = function (file, e) {
         e.stopImmediatePropagation();
+        const decodedPath = file.path;
+        const pathPrefix = "${url('filebrowser:filebrowser.views.view', path='')}";
+
         if (file.type == "dir") {
           // Reset page number so that we don't hit a page that doesn't exist
-          self.targetPageNum(1);
+          self.targetPageNum(1);        
           self.enableFilterAfterSearch = false;
           self.searchQuery("");
-          self.targetPath(file.url);
-          updateHash(stripHashes(file.path));
+          huePubSub.publish('open.filebrowserlink', { pathPrefix, decodedPath, fileBrowserModel: self });
         } else {
-          %if is_embeddable:
-          huePubSub.publish('open.link', file.url);
-          %else:
-          window.location.href = file.url;
-          %endif
-        }
-      };
-
-      self.editFile = function () {
-        huePubSub.publish('open.link', self.selectedFile().url.replace("${url('filebrowser:filebrowser.views.view', path='')}", "${url('filebrowser:filebrowser_views_edit', path='')}"));
+          huePubSub.publish('open.filebrowserlink', { pathPrefix, decodedPath });
+        }        
       };
 
       self.downloadFile = function () {
-        huePubSub.publish('open.link', self.selectedFile().url.replace("${url('filebrowser:filebrowser.views.view', path='')}", "${url('filebrowser:filebrowser_views_download', path='')}"));
+        huePubSub.publish('ignore.next.unload');
+        huePubSub.publish('open.filebrowserlink', { pathPrefix: '/filebrowser/download=', decodedPath: self.selectedFile().path });  
       };
 
       self.renameFile = function () {
@@ -1390,7 +1459,7 @@ else:
 
         $("#newNameInput").val(self.selectedFile().name);
 
-        $("#renameForm").attr("action", "/filebrowser/rename?next=${url('filebrowser:filebrowser.views.view', path='')}" + self.currentPath());
+        $("#renameForm").attr("action", "/filebrowser/rename?next=${url('filebrowser:filebrowser.views.view', path='')}" + encodeURIComponent(self.currentPath()));
 
         $('#renameForm').ajaxForm({
           dataType:  'json',
@@ -1412,7 +1481,7 @@ else:
 
         $("#setReplFileName").text(self.selectedFile().path);
 
-        $("#setReplicationFactorForm").attr("action", "/filebrowser/set_replication?next=${url('filebrowser:filebrowser.views.view', path='')}" + self.currentPath());
+        $("#setReplicationFactorForm").attr("action", "/filebrowser/set_replication?next=${url('filebrowser:filebrowser.views.view', path='')}" + encodeURIComponent(self.currentPath()));
 
         $('#setReplicationFactorForm').ajaxForm({
           dataType: 'json',
@@ -1429,6 +1498,18 @@ else:
         }).on('shown', function(){
           $('#newRepFactorInput').val(self.selectedFile().stats.replication);
         });
+      };
+      
+      const removeLastSlash = function (path) {
+        if (path.charAt(path.length - 1) === '/') {
+          return path.slice(0, -1);
+        }
+        return path;
+      };
+
+      self.allowCopyMoveTo = function (destination) {
+        const source = self.currentPath();
+        return removeLastSlash(source) !== removeLastSlash(destination);
       };
 
       self.move = function (mode, unselectedDrag) {
@@ -1448,7 +1529,7 @@ else:
 
         if (!isMoveOnSelf){
           hiddenFields($("#moveForm"), "src_path", paths);
-          $("#moveForm").attr("action", "/filebrowser/move?next=${url('filebrowser:filebrowser.views.view', path='')}" + self.currentPath());
+          $("#moveForm").attr("action", "/filebrowser/move?next=${url('filebrowser:filebrowser.views.view', path='')}" + encodeURIComponent(self.currentPath()));
           $('#moveForm').ajaxForm({
             dataType:  'json',
             success: function() {
@@ -1457,14 +1538,18 @@ else:
               self.retrieveData(true);
             },
             error: function(xhr){
-              $.jHueNotify.error(xhr.responseText);
+              huePubSub.publish('hue.global.error', {
+                message: xhr.responseText
+              });
               resetPrimaryButtonsStatus();
               $('#moveDestination').val('');
             }
           });
 
           if (mode === 'nomodal') {
-            $.jHueNotify.info('${ _('Items moving to') } "' + $('#moveDestination').val() + '"');
+            huePubSub.publish('hue.global.info', {
+              message: "${ _('Items moving to') } \"" + $('#moveDestination').val() + '"'
+            });
             $("#moveForm").submit();
           } else {
             $("#moveModal").modal({
@@ -1473,6 +1558,7 @@ else:
             });
 
             $("#moveModal").on("shown", function () {
+              self.enableMoveButton(false);
               $("#moveDestination").val('');
               $("#moveNameRequiredAlert").hide();
               $("#moveForm").find("input[name='*dest_path']").removeClass("fieldError");
@@ -1484,6 +1570,10 @@ else:
                 filesystemsFilter: [self.scheme()],
                 onNavigate: function (filePath) {
                   $("#moveDestination").val(filePath);
+                  self.enableMoveButton(self.allowCopyMoveTo(filePath));            
+                },
+                onFolderChange: function () {
+                  self.enableMoveButton(false);
                 },
                 createFolder: false,
                 uploadFile: false
@@ -1492,7 +1582,9 @@ else:
           }
         }
         else {
-          $.jHueNotify.warn("${ _('You cannot copy a folder into itself.') }");
+          huePubSub.publish('hue.global.warning', {
+            message: "${ _('You cannot copy a folder into itself.') }"
+          });
           $('#moveDestination').val('');
         }
       };
@@ -1506,7 +1598,7 @@ else:
 
         hiddenFields($("#copyForm"), "src_path", paths);
 
-        $("#copyForm").attr("action", "/filebrowser/copy?next=${url('filebrowser:filebrowser.views.view', path='')}" + self.currentPath());
+        $("#copyForm").attr("action", "/filebrowser/copy?next=${url('filebrowser:filebrowser.views.view', path='')}" + encodeURIComponent(self.currentPath()));
 
         $("#copyModal").modal({
           keyboard:true,
@@ -1521,12 +1613,15 @@ else:
             self.retrieveData(true);
           },
           error: function(xhr){
-            $.jHueNotify.error(xhr.responseText);
+            huePubSub.publish('hue.global.error', {
+              message: xhr.responseText
+            });
             resetPrimaryButtonsStatus();
           }
         });
 
         $("#copyModal").on("shown", function () {
+          self.enableCopyButton(false);
           $("#copyDestination").val('');
           $("#copyNameRequiredAlert").hide();
           $("#copyForm").find("input[name='*dest_path']").removeClass("fieldError");
@@ -1538,7 +1633,11 @@ else:
             filesystemsFilter: [self.scheme()],
             onNavigate: function (filePath) {
               $("#copyDestination").val(filePath);
+              self.enableCopyButton(self.allowCopyMoveTo(filePath)); 
             },
+            onFolderChange: function () {
+              self.enableCopyButton(false);
+            },            
             createFolder: false,
             uploadFile: false
           });
@@ -1558,7 +1657,7 @@ else:
 
           hiddenFields($("#chownForm"), 'path', paths);
 
-          $("#chownForm").attr("action", "/filebrowser/chown?next=${url('filebrowser:filebrowser.views.view', path='')}" + self.currentPath());
+          $("#chownForm").attr("action", "/filebrowser/chown?next=${url('filebrowser:filebrowser.views.view', path='')}" + encodeURIComponent(self.currentPath()));
 
           $("select[name='user']").val(self.selectedFile().stats.user);
 
@@ -1590,7 +1689,7 @@ else:
               self.retrieveData(true);
             },
             error: function (xhr, textStatus, errorThrown) {
-              $(document).trigger("error", xhr.responseText);
+              huePubSub.publish('hue.global.error', {message: xhr.responseText});
               resetPrimaryButtonsStatus();
             }
           });
@@ -1598,6 +1697,7 @@ else:
       };
 
       self.changePermissions = function (data, event) {
+        window.hueAnalytics.log('filebrowser', 'actions-menu/change-permissions-click');
         if (!self.isCurrentDirSentryManaged()) {
           var paths = [];
 
@@ -1610,7 +1710,7 @@ else:
 
           hiddenFields($("#chmodForm"), 'path', paths);
 
-          $("#chmodForm").attr("action", "/filebrowser/chmod?next=${url('filebrowser:filebrowser.views.view', path='')}" + self.currentPath());
+          $("#chmodForm").attr("action", "/filebrowser/chmod?next=${url('filebrowser:filebrowser.views.view', path='')}" + encodeURIComponent(self.currentPath()));
 
           $("#changePermissionModal").modal({
             keyboard: true,
@@ -1627,7 +1727,7 @@ else:
               self.retrieveData(true);
             },
             error: function (xhr, textStatus, errorThrown) {
-              $(document).trigger("error", xhr.responseText);
+              huePubSub.publish('hue.global.error', {message: xhr.responseText});
               resetPrimaryButtonsStatus();
             }
           });
@@ -1638,9 +1738,9 @@ else:
 
           for (var i = 0; i < permissions.length; i++) {
             if (mode & 1) {
-              $("#chmodForm input[name='" + permissions[i] + "']").attr("checked", true);
+              $("#chmodForm input[name='" + permissions[i] + "']").prop("checked", true);
             } else {
-              $("#chmodForm input[name='" + permissions[i] + "']").attr("checked", false);
+              $("#chmodForm input[name='" + permissions[i] + "']").prop("checked", false);
             }
             mode >>>= 1;
           }
@@ -1658,7 +1758,7 @@ else:
 
         $("#deleteForm").attr("action", "/filebrowser/rmtree" + "?" +
           (self.skipTrash() ? "skip_trash=true&" : "") +
-          "next=${url('filebrowser:filebrowser.views.view', path='')}" + self.currentPath());
+          "next=${url('filebrowser:filebrowser.views.view', path='')}" + encodeURIComponent(self.currentPath()));
 
         $("#deleteModal").modal({
           keyboard:true,
@@ -1689,7 +1789,7 @@ else:
             }, 1000);
           },
           error: function(xhr, textStatus, errorThrown) {
-            $(document).trigger("error", xhr.responseText);
+            huePubSub.publish('hue.global.error', {message: xhr.responseText});
             resetPrimaryButtonsStatus();
           }
         });
@@ -1704,7 +1804,9 @@ else:
         const path = $('<input>').val(self.selectedFile().path).appendTo('body').select()
         document.execCommand('copy');
         path.remove();
-        $.jHueNotify.info('${_('Path copied successfully to the clipboard')}');
+        huePubSub.publish('hue.global.info', {
+          message: "${_('Path copied successfully to the clipboard')}"
+        });
       }
 
       self.openInImporter = function () {
@@ -1723,7 +1825,9 @@ else:
             $('#submit-wf-modal').modal('show');
           });
         % else:
-          $.jHueNotify.warn("${ _('Submitting is not available as the Oozie app is disabled') }");
+          huePubSub.publish('hue.global.warning', {
+            message: "${ _('Submitting is not available as the Oozie app is disabled') }"
+          });
         % endif
       };
 
@@ -1776,13 +1880,15 @@ else:
           "start_time": ko.mapping.toJSON((new Date()).getTime())
         }, function (data) {
           if (data.status == 0) {
-            $.jHueNotify.info("${ _('Task ') }" + data.history_uuid + "${_(' submitted.') }");
+            huePubSub.publish('hue.global.info', {
+              message: "${ _('Task ') }" + data.history_uuid + "${_(' submitted.') }"
+            });
             huePubSub.publish('notebook.task.submitted', data);
           } else {
-            $(document).trigger("error", data.message);
+            huePubSub.publish('hue.global.error', {message: data.message});
           }
         }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
         });
       };
 
@@ -1812,18 +1918,20 @@ else:
           "start_time": ko.mapping.toJSON((new Date()).getTime())
         }, function (data) {
           if (data.status == 0) {
-            $.jHueNotify.info("${ _('Task ') }" + data.history_uuid + "${_(' submitted.') }");
+            huePubSub.publish('hue.global.info', {
+              message: "${ _('Task ') }" + data.history_uuid + "${_(' submitted.') }"
+            });
             huePubSub.publish('notebook.task.submitted', data);
           } else {
-            $(document).trigger("error", data.message);
+            huePubSub.publish('hue.global.error', {message: data.message});
           }
         }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
         });
       };
 
       self.createDirectory = function (formElement) {
-        $(formElement).attr("action", "/filebrowser/mkdir?next=${url('filebrowser:filebrowser.views.view', path='')}" + self.currentPath());
+        $(formElement).attr("action", "/filebrowser/mkdir?next=${url('filebrowser:filebrowser.views.view', path='')}" + encodeURIComponent(self.currentPath()));
         if ($.trim($("#newDirectoryNameInput").val()) == "") {
           $("#directoryNameRequiredAlert").show();
           $("#newDirectoryNameInput").addClass("fieldError");
@@ -1844,6 +1952,20 @@ else:
           resetPrimaryButtonsStatus(); //globally available
           return false;
         }
+        if (self.isOFSServiceID() || self.isOFSVol()) {
+          if ($("#newDirectoryNameInput").val().length < 3 || $("#newDirectoryNameInput").val().length > 63) {
+            $("#volumeBucketNameAlert").show();
+            $("#newDirectoryNameInput").addClass("fieldError");
+            resetPrimaryButtonsStatus(); //globally available
+            return false;
+          }
+          if ($("#newDirectoryNameInput").val() !== $("#newDirectoryNameInput").val().toLowerCase()) {
+            $("#upperCaseVolumeBucketNameAlert").show();
+            $("#newDirectoryNameInput").addClass("fieldError");
+            resetPrimaryButtonsStatus(); //globally available
+            return false;
+          }
+        }
         $(formElement).ajaxSubmit({
           dataType:  'json',
           success: function() {
@@ -1852,7 +1974,7 @@ else:
             self.retrieveData(true);
           },
           error: function (xhr, textStatus, errorThrown) {
-            $(document).trigger("error", xhr.responseText);
+            huePubSub.publish('hue.global.error', {message: xhr.responseText});
             resetPrimaryButtonsStatus();
           }
         });
@@ -1860,7 +1982,7 @@ else:
       };
 
       self.createFile = function (formElement) {
-        $(formElement).attr("action", "/filebrowser/touch?next=${url('filebrowser:filebrowser.views.view', path='')}" + self.currentPath());
+        $(formElement).attr("action", "/filebrowser/touch?next=${url('filebrowser:filebrowser.views.view', path='')}" + encodeURIComponent(self.currentPath()));
         if ($.trim($("#newFileNameInput").val()) == "") {
           $("#fileNameRequiredAlert").show();
           $("#newFileNameInput").addClass("fieldError");
@@ -1883,7 +2005,7 @@ else:
             self.retrieveData(true);
           },
           error: function (xhr, textStatus, errorThrown) {
-            $(document).trigger("error", xhr.responseText);
+            huePubSub.publish('hue.global.error', {message: xhr.responseText});
             resetPrimaryButtonsStatus();
           }
         });
@@ -1899,7 +2021,7 @@ else:
 
         hiddenFields($("#restoreTrashForm"), 'path', paths);
 
-        $("#restoreTrashForm").attr("action", "/filebrowser/trash/restore?next=${url('filebrowser:filebrowser.views.view', path='')}" + self.currentPath());
+        $("#restoreTrashForm").attr("action", "/filebrowser/trash/restore?next=${url('filebrowser:filebrowser.views.view', path='')}" + encodeURIComponent(self.currentPath()));
 
         $("#restoreTrashModal").modal({
           keyboard:true,
@@ -1913,7 +2035,7 @@ else:
             self.retrieveData(true);
           },
           error: function(xhr, textStatus, errorThrown) {
-            $(document).trigger("error", xhr.responseText);
+            huePubSub.publish('hue.global.error', {message: xhr.responseText});
             resetPrimaryButtonsStatus();
           }
         });
@@ -1944,71 +2066,339 @@ else:
         });
       };
 
-      self.uploadFile = (function () {
-        self.pendingUploads(0);
-        var action = "/filebrowser/upload/file";
-        var uploader = new qq.FileUploader({
-          element: document.getElementById("fileUploader"),
-          action: action,
-          template: '<div class="qq-uploader" style="margin-left: 10px">' +
-          '<div class="qq-upload-drop-area"><span>${_('Drop the files here to upload')}</span></div>' +
-          '<div class="qq-upload-button qq-no-float">${_('Select files')}</div> &nbsp; <span class="muted">${_('or drag and drop them here')}</span>' +
-          '<ul class="qq-upload-list qq-upload-files unstyled qq-no-float" style="margin-right: 0;"></ul>' +
-          '</div>',
-          fileTemplate: '<li><span class="qq-upload-file-extended" style="display:none"></span><span class="qq-upload-spinner hide" style="display:none"></span>' +
-          '<div class="progress-row dz-processing">' +
-          '<span class="break-word qq-upload-file"></span>' +
-          '<div class="pull-right">' +
-          '<span class="muted qq-upload-size"></span>&nbsp;&nbsp;' +
-          '<a href="#" title="${_('Cancel')}" class="complex-layout"><i class="fa fa-fw fa-times qq-upload-cancel"></i></a>' +
-          '<span class="qq-upload-done" style="display:none"><i class="fa fa-fw fa-check muted"></i></span>' +
-          '<span class="qq-upload-failed-text">${_('Failed')}</span>' +
-          '</div>' +
-          '<div class="progress-row-bar" style="width: 0%;"></div>' +
-          '</div></li>',
-          params: {
-            dest: self.currentPath(),
-            fileFieldLabel: "hdfs_file"
-          },
-          onProgress: function (id, fileName, loaded, total) {
-            $('.qq-upload-files').find('li').each(function(){
-              var listItem = $(this);
-              if (listItem.find('.qq-upload-file-extended').text() == fileName){
-                listItem.find('.progress-row-bar').css('width', (loaded/total)*100 + '%');
+      function pollForTaskProgress(taskId, listItem, fileName) {
+        var taskStatus = 'pending';
+        var pollingInterval = 10000;
+
+        var doPoll = function() {
+          if (taskStatus === 'pending') {
+            $.get('/desktop/api2/taskserver/check_upload_status/' + taskId, function(data) {
+              if (data.isFinalized || data.isFailure || data.is_revoked) {
+                taskStatus = data.isFinalized ? 'finalized' : 'failed';
+
+                if (data.isFinalized) {
+                  listItem.find('.progress-row-bar').css('width', '100%');
+                  listItem.find('.progress-row-text').text('Upload complete.');
+                  $(document).trigger('info', fileName + "${ _(' uploaded successfully.') }");
+                  self.retrieveData(true);
+                } else if (data.isFailure) {
+                  listItem.find('.progress-row-bar').css('width', '100%');
+                  listItem.find('.progress-row-text').text('Upload failed.');
+                  $(document).trigger('error', fileName + "${ _(' file upload failed. Please check the logs for task id: ') }" + taskId);
+                }
+                
+              } else if (data.isRunning) {
+                var progressPercentage = 90; // Adjust based on data.progress if available
+                listItem.find('.progress-row-bar').css('width', progressPercentage + '%');
+                setTimeout(doPoll, pollingInterval);
+              }
+            }).fail(function(xhr, textStatus, errorThrown) {
+              if (xhr.status === 404) {
+                setTimeout(doPoll, pollingInterval); // Retry after 10 seconds
               }
             });
-          },
-          onComplete: function (id, fileName, response) {
-            self.pendingUploads(self.pendingUploads() - 1);
-            if (response.status != 0) {
-              $(document).trigger('error', "${ _('Error: ') }" + response.data);
-            }
-            else {
-              $(document).trigger('info', response.path + "${ _(' uploaded successfully.') }");
-              self.filesToHighlight.push(response.path);
-            }
-            if (self.pendingUploads() == 0) {
-              $('#uploadFileModal').modal('hide');
-              self.retrieveData(true);
-            }
-          },
-          onSubmit: function (id, fileName, responseJSON) {
-            self.pendingUploads(self.pendingUploads() + 1);
-          },
-          onCancel: function (id, fileName) {
-            self.pendingUploads(self.pendingUploads() - 1);
-          },
-          debug: false
-        });
+          }
+        };
+        self.retrieveData(true);
+        doPoll();
+      }
 
-        $("#fileUploader").on('fb:updatePath', function (e, options) {
+      self.checkAndDisplayAvailableSpace = function () {
+        $.ajax({
+            url: '/filebrowser/upload/taskserver/get_available_space_for_file_uploads/',
+            success: function(response) {
+                if (typeof window.MAX_FILE_SIZE_UPLOAD_LIMIT === 'undefined') {
+                  window.MAX_FILE_SIZE_UPLOAD_LIMIT = 5 * 1024 * 1024 * 1024; // 5GB in bytes
+                }
+                var freeSpace = Math.min(response.upload_available_space, window.MAX_FILE_SIZE_UPLOAD_LIMIT);
+                $('.free-space-info').text('- Max file size upload limit: ' + formatBytes(freeSpace));
+            },
+            error: function(xhr, status, error) {
+                huePubSub.publish('hue.global.error', { message: '${ _("Error checking available space: ") }' + error});
+                $('.free-space-info').text('Error checking available space');
+            }
+        });
+      };
+ 
+
+      self.uploadFile = (function () {  
+          var uploader; 
+          var scheduleUpload;
+          
+          if ((window.getLastKnownConfig().hue_config.enable_chunked_file_uploader) && (window.getLastKnownConfig().hue_config.enable_task_server))  {
+            
+            self.pendingUploads(0);
+            var action = "/filebrowser/upload/chunks/";
+            self.taskIds = [];
+            self.listItems = [];
+            self.checkAndDisplayAvailableSpace();
+            uploader = new qq.FileUploader({
+              element: document.getElementById("fileUploader"),
+              request: {
+                  endpoint: action,
+                  paramsInBody: false,
+                  params: {
+                      dest: self.currentPath(),
+                      inputName: "hdfs_file"
+                  }
+              },
+              maxConnections: window.CONCURRENT_MAX_CONNECTIONS || 5,
+              chunking: {
+                  enabled: true,
+                  concurrent: {
+                      enabled: true
+                  },
+                  partSize: window.FILE_UPLOAD_CHUNK_SIZE || 5242880,
+                  success: {
+                      endpoint: "/filebrowser/upload/complete/"
+                  },
+                  paramNames: {
+                      partIndex: "qqpartindex",
+                      partByteOffset: "qqpartbyteoffset",
+                      chunkSize: "qqchunksize",
+                      totalFileSize: "qqtotalfilesize",
+                      totalParts: "qqtotalparts"
+                  }
+              },
+
+              template: 'qq-template',
+              callbacks: {
+                  onProgress: function (id, fileName, loaded, total) {
+
+                    $('.qq-upload-files').find('li').each(function(){
+                      var listItem = $(this);
+                      if (listItem.find('.qq-upload-file-selector').text() == fileName){
+                        //cap the progress at 80%
+                        listItem.find('.progress-row-bar').css('width', (loaded/total)*80 + '%');
+                        if ((loaded/total) === 80) {
+                          listItem.find('.progress-row-text').text('Finalizing upload...');
+                        }
+                      }
+                    });            
+                  },
+
+                  onComplete: function (id, fileName, response) {
+                    self.pendingUploads(self.pendingUploads() - 1);
+                    if (response.status != 0) {
+                      huePubSub.publish('hue.global.error', {message: "${ _('Error: ') }" + response.data});
+                    }
+                    else {
+                      var task_id = response.task_id;
+                      self.taskIds.push(task_id);
+                      var listItem = $('.qq-upload-files').find('li').filter(function() {
+                        return $(this).find('.qq-upload-file-selector').text() === fileName;
+                      });
+                      self.listItems.push(listItem);
+                        if (scheduleUpload && self.pendingUploads() === 0) {
+                          $('#uploadFileModal').modal('hide');
+                          huePubSub.publish('hue.global.info', { message: '${ _("File upload scheduled. Please check the task server page for progress.") }'});
+                        }
+                        // Add a delay of 2 seconds before calling pollForTaskProgress, to ensure the upload task is received by the task_server before checking its status. 
+                        setTimeout(function() {
+                          pollForTaskProgress(response.task_id, listItem, fileName);
+                        }, 2000);  
+                      self.filesToHighlight.push(response.path);                       
+                    }
+                    if (self.pendingUploads() === 0) {                    
+                      self.taskIds=[];
+                      self.listItems=[];
+                      self.retrieveData(true);
+                    }
+                  },
+                  onSubmit: function (id, fileName, responseJSON) {
+                      var deferred = new qq.Promise(); // Create a promise to defer the upload
+                      var uploader = this;
+                      
+                      // Make an AJAX request to check available disk space
+                      $.ajax({
+                        url: '/filebrowser/upload/taskserver/get_available_space_for_file_uploads/',
+                        success: function(response) {
+                          if (typeof window.MAX_FILE_SIZE_UPLOAD_LIMIT === 'undefined' || window.MAX_FILE_SIZE_UPLOAD_LIMIT === -1) {
+                            window.MAX_FILE_SIZE_UPLOAD_LIMIT = 5 * 1024 * 1024 * 1024; // 5GB in bytes
+                          }
+                          var freeSpace = Math.min(response.upload_available_space, window.MAX_FILE_SIZE_UPLOAD_LIMIT);
+                          var file = uploader.getFile(id); // Use the stored reference
+                          // Update the free space display
+                          $('.free-space-info').text('- Max file size upload limit: ' + formatBytes(freeSpace));
+                          if ((file.size > freeSpace) || (file.size > window.MAX_FILE_SIZE_UPLOAD_LIMIT)) {
+                            huePubSub.publish('hue.global.error', { message: '${ _("Not enough space available to upload this file.") }'});
+                            deferred.failure(); // Reject the promise to cancel the upload
+                          } else if (file.size > window.MAX_FILE_SIZE_UPLOAD_LIMIT) {
+                            huePubSub.publish('hue.global.error', { message: '${ _("File size is bigger than MAX_FILE_SIZE_UPLOAD_LIMIT.") }'});
+                            deferred.failure(); // Reject the promise to cancel the upload
+                          } else {
+                            var newPath = "/filebrowser/upload/chunks/file?dest=" + encodeURIComponent(self.currentPath().normalize('NFC'));
+                            uploader.setEndpoint(newPath);
+                            self.pendingUploads(self.pendingUploads() + 1);
+                            deferred.success(); // Resolve the promise to allow the upload
+                          }
+                        },
+                        error: function(xhr, status, error) {
+                          huePubSub.publish('hue.global.error', { message: '${ _("Error checking available space: ") }' + error});
+                          deferred.failure(); // Reject the promise to cancel the upload
+                        }
+                      });
+
+                      return deferred; // Return the promise to Fine Uploader
+                  },
+                  onCancel: function (id, fileName) {
+                    self.pendingUploads(self.pendingUploads() - 1);
+                  }
+              },
+              debug: false
+            });
+          }
+          // Chunked Fileuploader without Taskserver
+          else if ((window.getLastKnownConfig().hue_config.enable_chunked_file_uploader) && !(window.getLastKnownConfig().hue_config.enable_task_server)) {
+            self.pendingUploads(0);
+            var action = "/filebrowser/upload/chunks/";
+            uploader = new qq.FileUploader({
+              element: document.getElementById("fileUploader"),
+              request: {
+                  endpoint: action,
+                  paramsInBody: false,
+                  params: {
+                      dest: self.currentPath(),
+                      inputName: "hdfs_file"
+                  }
+              },
+              maxConnections: window.CONCURRENT_MAX_CONNECTIONS || 5,
+              chunking: {
+                  enabled: true,
+                  concurrent: {
+                      enabled: true
+                  },
+                  partSize: window.FILE_UPLOAD_CHUNK_SIZE || 5242880,
+                  success: {
+                      endpoint: "/filebrowser/upload/complete/"
+                  },
+                  paramNames: {
+                      partIndex: "qqpartindex",
+                      partByteOffset: "qqpartbyteoffset",
+                      chunkSize: "qqchunksize",
+                      totalFileSize: "qqtotalfilesize",
+                      totalParts: "qqtotalparts"
+                  }
+              },
+
+              template: 'qq-template',
+              callbacks: {
+                  onProgress: function (id, fileName, loaded, total) {
+                  $('.qq-upload-files').find('li').each(function(){
+                    var listItem = $(this);
+                    if (listItem.find('.qq-upload-file-selector').text() == fileName){
+                      listItem.find('.progress-row-bar').css('width', (loaded/total)*100 + '%');
+                    }
+                  });
+                  },
+                  onComplete: function (id, fileName, response) {
+                    self.pendingUploads(self.pendingUploads() - 1);
+                    if (response.status != 0) {
+                      huePubSub.publish('hue.global.error', {message: "${ _('Error: ') }" + response.data});
+                    }
+                    else {
+                      huePubSub.publish('hue.global.info', {message: response.path + "${ _(' uploaded successfully.') }"});
+                      self.filesToHighlight.push(response.path);
+                    }
+                    if (self.pendingUploads() == 0) {
+                      $('#uploadFileModal').modal('hide');
+                      self.retrieveData(true);
+                    }
+                  },
+
+                  onAllComplete: function(succeeded, failed){
+                    $('#uploadFileModal').modal('hide');
+                  },
+                  onSubmit: function (id, fileName, responseJSON) {
+                    var newPath = "/filebrowser/upload/chunks/file?dest=" + encodeURIComponent(self.currentPath().normalize('NFC'));
+                    this.setEndpoint(newPath);
+                    self.pendingUploads(self.pendingUploads() + 1);
+                  },
+                  onCancel: function (id, fileName) {
+                    self.pendingUploads(self.pendingUploads() - 1);
+                  }
+              },
+
+              debug: false
+            });
+          }
+          //Regular fileuploads
+          else {
+            self.pendingUploads(0);
+            var action = "/filebrowser/upload/file";
+            uploader = new fileuploader.FileUploader({
+              element: document.getElementById("fileUploader"),
+              action: action,
+              template: '<div class="qq-uploader" style="margin-left: 10px">' +
+              '<div class="qq-upload-drop-area"><span>${_('Drop the files here to upload')}</span></div>' +
+              '<div class="qq-upload-button qq-no-float">${_('Select files')}</div> &nbsp; <span class="muted">${_('or drag and drop them here')}</span>' +
+              '<ul class="qq-upload-list qq-upload-files unstyled qq-no-float" style="margin-right: 0;"></ul>' +
+              '</div>',
+              fileTemplate: '<li><span class="qq-upload-file-extended" style="display:none"></span><span class="qq-upload-spinner hide" style="display:none"></span>' +
+              '<div class="progress-row dz-processing">' +
+              '<span class="break-word qq-upload-file"></span>' +
+              '<div class="pull-right">' +
+              '<span class="muted qq-upload-size"></span>&nbsp;&nbsp;' +
+              '<a href="#" title="${_('Cancel')}" class="complex-layout"><i class="fa fa-fw fa-times qq-upload-cancel"></i></a>' +
+              '<span class="qq-upload-done" style="display:none"><i class="fa fa-fw fa-check muted"></i></span>' +
+              '<span class="qq-upload-failed-text">${_('Failed')}</span>' +
+              '</div>' +
+              '<div class="progress-row-bar" style="width: 0%;"></div>' +
+              '</div></li>',
+              params: {
+                dest: self.currentPath(),
+                fileFieldLabel: "hdfs_file"
+              },
+              onProgress: function (id, fileName, loaded, total) {
+                $('.qq-upload-files').find('li').each(function(){
+                  var listItem = $(this);
+                  if (listItem.find('.qq-upload-file-extended').text() == fileName){
+                    listItem.find('.progress-row-bar').css('width', (loaded/total)*100 + '%');
+                  }
+                });
+              },
+              onComplete: function (id, fileName, response) {
+                self.pendingUploads(self.pendingUploads() - 1);
+                if (response.status != 0) {
+                  huePubSub.publish('hue.global.error', {message: "${ _('Error: ') }" + response.data});
+                  
+                }
+                else {
+                  huePubSub.publish('hue.global.info', {message: response.path + "${ _(' uploaded successfully.') }"});
+                  self.filesToHighlight.push(response.path);
+                }
+                if (self.pendingUploads() == 0) {
+                  $('#uploadFileModal').modal('hide');
+                  self.retrieveData(true);
+                }
+              },
+              onSubmit: function (id, fileName, responseJSON) {
+                self.pendingUploads(self.pendingUploads() + 1);
+              },
+              onCancel: function (id, fileName) {
+                self.pendingUploads(self.pendingUploads() - 1);
+              },
+              debug: false
+            });
+          }
+
+          $("#fileUploader").on('fb:updatePath', function (e, options) {
+          const uploadingToOzone = self.currentPath().startsWith("ofs://");
+          const ozoneSizeLimit = Math.min(
+            ...[UPLOAD_CHUNK_SIZE, MAX_FILE_SIZE_UPLOAD_LIMIT].filter(Number.isFinite)
+          );
+          const newSizeLimit = uploadingToOzone ? ozoneSizeLimit : MAX_FILE_SIZE_UPLOAD_LIMIT;
+          if (newSizeLimit) {
+            uploader.setOption('sizeLimit', newSizeLimit);
+          }
           uploader.setParams({
             dest: options.dest,
             fileFieldLabel: "hdfs_file"
           });
         });
 
-        return function () {
+        return function (isScheduled) {
+          scheduleUpload = isScheduled;
           $("#uploadFileModal").modal({
             show: true
           });
@@ -2094,7 +2484,7 @@ else:
         $('.filebrowser').on('dragenter', function (e) {
           e.preventDefault();
 
-          if (_isExternalFile && !($("#uploadFileModal").is(":visible")) && (!fileBrowserViewModel.isS3() || (fileBrowserViewModel.isS3() && !fileBrowserViewModel.isS3Root()))) {
+          if (_isExternalFile && !($("#uploadFileModal").is(":visible")) && ((!fileBrowserViewModel.isS3() || (fileBrowserViewModel.isS3() && !fileBrowserViewModel.isS3Root())) || (!fileBrowserViewModel.isGS() || (fileBrowserViewModel.isGS() && !fileBrowserViewModel.isGSRoot())))) {
             showHoverMsg("${_('Drop files here to upload')}");
           }
         });
@@ -2179,23 +2569,25 @@ else:
               $('#progressStatusBar div').width(progress.toFixed() + "%");
             },
             canceled: function () {
-              $.jHueNotify.info(I18n('The upload has been canceled'));
+              huePubSub.publish('hue.global.info', {
+                message: I18n('The upload has been canceled')
+              });
             },
             complete: function (data) {
               if (data.xhr.response != '') {
                 var response = JSON.parse(data.xhr.response);
                 if (response && response.status != null) {
                   if (response.status != 0) {
-                    $(document).trigger('error', response.data);
+                    huePubSub.publish('hue.global.error', {message: response.data});
                   } else {
-                    $(document).trigger('info', response.path + ' ' + I18n('uploaded successfully'));
+                    huePubSub.publish('hue.global.info', { message: response.path + ' ' + I18n('uploaded successfully')});
                     fileBrowserViewModel.filesToHighlight.push(response.path);
                   }
                 }
               }
             }
           };
-          if (ops.path.toLowerCase() !== 's3a://') {
+          if (ops.path.toLowerCase() !== 's3a://' && ops.path.toLowerCase() !== 'gs://') {
             _dropzone = new Dropzone($('.filebrowser .hoverMsg')[0], options);
 
             _dropzone.on('queuecomplete', function () {
@@ -2322,7 +2714,9 @@ else:
           }
         });
         if(isMoveOnSelf){
-          $.jHueNotify.warn("${ _('You cannot copy a folder into itself.') }");
+          huePubSub.publish('hue.global.warning', {
+            message: "${ _('You cannot copy a folder into itself.') }"
+          });
           $('#moveDestination').val('');
           return false;
         }
@@ -2361,9 +2755,12 @@ else:
           skipEnter: true,
           skipKeydownEvents: true,
           onEnter: function (el) {
-            $("#jHueHdfsAutocomplete").hide();
+            $("#jHueHdfsAutocomplete").hide();            
+            const allowMove = fileBrowserViewModel.allowCopyMoveTo(el.val());
+            fileBrowserViewModel.enableMoveButton(allowMove);
           },
           isS3: fileBrowserViewModel.isS3(),
+          isGS: fileBrowserViewModel.isGS(),
           root: fileBrowserViewModel.rootCurrent()
         });
         $("#copyDestination").jHueHdfsAutocomplete({
@@ -2372,15 +2769,20 @@ else:
           skipKeydownEvents: true,
           onEnter: function (el) {
             $("#jHueHdfsAutocomplete").hide();
+            const allowCopy = fileBrowserViewModel.allowCopyMoveTo(el.val());
+            fileBrowserViewModel.enableCopyButton(allowCopy);
           },
           isS3: fileBrowserViewModel.isS3(),
+          isGS: fileBrowserViewModel.isGS(),
           root: fileBrowserViewModel.rootCurrent()
         });
       });
 
       huePubSub.subscribe('submit.popup.return', function (data) {
         if (data.type == 'external_workflow') {
-          $.jHueNotify.info('${_('Workflow submitted.')}');
+          huePubSub.publish('hue.global.info', {
+            message: "${_('Workflow submitted.')}"
+          });
           huePubSub.publish('open.link', '/jobbrowser/#!id=' + data.job_id);
           huePubSub.publish('browser.job.open.link', data.job_id);
           $('.submit-modal').modal('hide');
@@ -2407,6 +2809,7 @@ else:
       huePubSub.publish('update.autocompleters');
 
       $(".create-directory-link").click(function () {
+        window.hueAnalytics.log('filebrowser', 'new-directory-btn-click');
         $("#newDirectoryNameInput").val('');
         $("#createDirectoryModal").modal({
           keyboard:true,
@@ -2427,6 +2830,8 @@ else:
         $("#directoryNameRequiredAlert").hide();
         $("#directoryNameExistsAlert").hide();
         $("#smallFileSystemNameAlert").hide();
+        $("#volumeBucketNameAlert").hide();
+        $("#upperCaseVolumeBucketNameAlert").hide();
       });
 
       $("#newFileNameInput").focus(function () {
@@ -2453,39 +2858,7 @@ else:
 
       $("*[rel='tooltip']").tooltip({ placement:"bottom" });
 
-      var hashchange = function () {
-        if (window.location.pathname.indexOf('/filebrowser') > -1) {
-          var targetPath = "";
-          var hash = decodeURI(window.location.hash.substring(1));
-          if (hash != null && hash != "" && hash.indexOf('/') > -1) {
-            targetPath = "${url('filebrowser:filebrowser.views.view', path='')}";
-            if (hash.indexOf("!!") != 0) {
-              targetPath += stripHashes(encodeURIComponent(hash));
-            }
-            else {
-              targetPath = fileBrowserViewModel.targetPath() + encodeURI(hash);
-            }
-            fileBrowserViewModel.targetPageNum(1)
-          }
-          if (window.location.href.indexOf("#") == -1) {
-            fileBrowserViewModel.targetPageNum(1);
-            targetPath = "${current_request_path | n,unicode }";
-          }
-          if (targetPath != "") {
-            fileBrowserViewModel.targetPath(targetPath);
-            fileBrowserViewModel.retrieveData();
-          }
-        }
-      }
-
-      huePubSub.subscribe('fb.update.hash', hashchange, 'filebrowser');
-
-      if (window.location.hash != null && window.location.hash.length > 1) {
-        hashchange();
-      }
-      else {
-        fileBrowserViewModel.retrieveData();
-      }
+      fileBrowserViewModel.retrieveData();
 
 
       $("#editBreadcrumb").click(function (e) {
@@ -2493,6 +2866,7 @@ else:
           $(this).hide();
           $(".hue-breadcrumbs").hide();
           $("#hueBreadcrumbText").show().focus();
+          window.hueAnalytics.log('filebrowser', 'edit-breadcrumb-click');
         }
       });
 
@@ -2502,21 +2876,20 @@ else:
         skipKeydownEvents: true,
         onEnter: function (el) {
           var target_path = stripHashes(el.val());
-          if (window.USER_HOME_DIR.split('/')[2] !== el.val().split('/')[2] && window.RAZ_IS_ENABLED){
-            $.jHueNotify.warn("${ _('You are not allowed to go outside ') }" + window.USER_HOME_DIR + "${ _(' bucket.') }");
+          if (el.val().split('/')[2] === '' && window.RAZ_IS_ENABLED){
+            huePubSub.publish('hue.global.warning', {
+              message: "${ _('Listing of buckets is not allowed. Redirecting to the home directory.') }"
+            });
             target_path = window.USER_HOME_DIR;
           } 
-          fileBrowserViewModel.targetPath("${url('filebrowser:filebrowser.views.view', path='')}" + target_path); 
+          fileBrowserViewModel.targetPath("${url('filebrowser:filebrowser.views.view', path='')}" + encodeURIComponent(target_path)); 
           fileBrowserViewModel.getStats(function (data) {
-            if (data.type != null && data.type == "file") {
-              %if is_embeddable:
-              huePubSub.publish('open.link', data.url);
-              %else:
-              huePubSub.publish('open.link', data.url);
-              %endif
+            const pathPrefix = "${url('filebrowser:filebrowser.views.view', path='')}";
+            if (data.type != null && data.type == "file") {              
+              huePubSub.publish('open.filebrowserlink', { pathPrefix, decodedPath: target_path});              
               return false;
             } else {
-              updateHash(target_path);
+              huePubSub.publish('open.filebrowserlink', { pathPrefix, decodedPath: target_path, fileBrowserModel: fileBrowserViewModel});
             }
             $("#jHueHdfsAutocomplete").hide();
           });
@@ -2533,17 +2906,16 @@ else:
         error:function (x, e) {
           if (x.status == 500 && x.responseText.indexOf("jobbrowser") == -1) {
             if (x.responseJSON && x.responseJSON.detail) {
-              $(document).trigger("error", x.responseJSON.detail);
+              huePubSub.publish('hue.global.error', {message: x.responseJSON.detail});
             }
             else {
-              $(document).trigger("error", "${_('There was a problem with your request.')}");
+              huePubSub.publish('hue.global.error', {message: "${_('There was a problem with your request.')}"});
             }
             $("#hueBreadcrumbText").blur();
           }
         }
       });
 
-      $(window).bind("hashchange.fblist", hashchange);
 
       $(".actionbar").data("originalWidth", $(".actionbar").width());
 
@@ -2583,7 +2955,9 @@ else:
           _dropzone.enable();
         }
         $(".qq-upload-list").empty();
+        $(".qq-upload-list-selector").empty();
         $(".qq-upload-drop-area").hide();
+        $(".qq-upload-drop-area-selector").hide();
       });
     });
   </script>

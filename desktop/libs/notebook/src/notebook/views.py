@@ -15,73 +15,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from builtins import object
+import sys
 import json
 import logging
-import sys
 
-from django.urls import reverse
-from django.db.models import Q
 from django.shortcuts import redirect
-from django.views.decorators.clickjacking import xframe_options_exempt
+from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from beeswax.data_export import DOWNLOAD_COOKIE_AGE
 from beeswax.management.commands import beeswax_install_examples
 from desktop.auth.decorators import admin_required
-from desktop.conf import ENABLE_DOWNLOAD, USE_NEW_EDITOR
+from desktop.conf import ENABLE_DOWNLOAD, ENABLE_HUE_5, USE_NEW_EDITOR
 from desktop.lib import export_csvxls
 from desktop.lib.connectors.models import Connector
-from desktop.lib.django_util import render, JsonResponse
+from desktop.lib.django_util import JsonResponse, render
 from desktop.lib.exceptions_renderable import PopupException
-from desktop.lib.json_utils import JSONEncoderForHTML
-from desktop.models import Document2, Document, FilesystemException, _get_gist_document
+from desktop.models import Document, Document2, FilesystemException, _get_gist_document
 from desktop.views import serve_403_error
-from metadata.conf import has_optimizer, has_catalog, has_workload_analytics
-
-from notebook.conf import get_ordered_interpreters, ENABLE_NOTEBOOK_2, SHOW_NOTEBOOKS, EXAMPLES
+from metadata.conf import has_catalog, has_optimizer, has_workload_analytics
+from notebook.conf import EXAMPLES, SHOW_NOTEBOOKS, get_ordered_interpreters
 from notebook.connectors.base import Notebook, _get_snippet_name, get_interpreter
 from notebook.connectors.spark_shell import SparkApi
-from notebook.decorators import check_editor_access_permission, check_document_access_permission, check_document_modify_permission
+from notebook.decorators import check_document_access_permission, check_document_modify_permission, check_editor_access_permission
 from notebook.management.commands.notebook_setup import Command
-from notebook.models import make_notebook, _get_editor_type, get_api, _get_dialect_example
+from notebook.models import _get_dialect_example, _get_editor_type, get_api, make_notebook
 
-if sys.version_info[0] > 2:
-  from django.utils.translation import gettext as _
-else:
-  from django.utils.translation import ugettext as _
-
-
-LOG = logging.getLogger(__name__)
-
-
-def notebooks(request):
-  editor_type = request.GET.get('type', 'notebook')
-
-  if editor_type != 'notebook':
-    if USE_NEW_EDITOR.get():
-      notebooks = [doc.to_dict() for doc in Document2.objects.documents(
-          user=request.user).search_documents(types=['query-%s' % editor_type])]
-    else:
-      notebooks = [
-        d.content_object.to_dict()
-          for d in Document.objects.get_docs(request.user, Document2, qfilter=Q(extra__startswith='query'))
-          if not d.content_object.is_history and d.content_object.type == 'query-' + editor_type
-      ]
-  else:
-    if USE_NEW_EDITOR.get():
-      notebooks = [doc.to_dict() for doc in Document2.objects.documents(user=request.user).search_documents(types=['notebook'])]
-    else:
-      notebooks = [
-        d.content_object.to_dict()
-          for d in Document.objects.get_docs(request.user, Document2, qfilter=Q(extra='notebook'))
-          if not d.content_object.is_history
-      ]
-
-  return render('notebooks.mako', request, {
-      'notebooks_json': json.dumps(notebooks, cls=JSONEncoderForHTML),
-      'editor_type': editor_type
-  })
+LOG = logging.getLogger()
 
 
 @check_document_access_permission
@@ -95,12 +56,10 @@ def notebook(request, is_embeddable=False):
   try:
     from spark.conf import LIVY_SERVER_SESSION_KIND
     is_yarn_mode = LIVY_SERVER_SESSION_KIND.get()
-  except:
+  except Exception:
     LOG.exception('Spark is not enabled')
 
   return render('notebook.mako', request, {
-      'editor_id': notebook_id or None,
-      'notebooks_json': '{}',
       'is_embeddable': request.GET.get('is_embeddable', False),
       'options_json': json.dumps({
           'languages': get_ordered_interpreters(request.user),
@@ -142,14 +101,12 @@ def editor(request, is_mobile=False, is_embeddable=False):
     editor_type = _get_editor_type(editor_id)
 
   template = 'editor.mako'
-  if ENABLE_NOTEBOOK_2.get():
+  if ENABLE_HUE_5.get():
     template = 'editor2.mako'
   elif is_mobile:
     template = 'editor_m.mako'
 
   return render(template, request, {
-      'editor_id': editor_id or None,
-      'notebooks_json': '{}',
       'is_embeddable': request.GET.get('is_embeddable', False),
       'editor_type': editor_type,
       'options_json': json.dumps({
@@ -207,8 +164,7 @@ def browse(request, database, table, partition_spec=None):
         namespace=namespace,
         compute=compute
     )
-    return render('editor2.mako' if ENABLE_NOTEBOOK_2.get() else 'editor.mako', request, {
-        'notebooks_json': json.dumps([editor.get_data()]),
+    return render('editor2.mako' if ENABLE_HUE_5.get() else 'editor.mako', request, {
         'options_json': json.dumps({
             'languages': get_ordered_interpreters(request.user),
             'mode': 'editor',
@@ -265,9 +221,9 @@ def execute_and_watch(request):
 
     sample = get_api(request, snippet).fetch_result(notebook, snippet, 0, start_over=True)
 
-    from indexer.api3 import _index # Will ve moved to the lib
-    from indexer.file_format import HiveFormat
+    from indexer.api3 import _index  # Will ve moved to the lib
     from indexer.fields import Field
+    from indexer.file_format import HiveFormat
 
     file_format = {
         'name': 'col',
@@ -294,8 +250,7 @@ def execute_and_watch(request):
   else:
     raise PopupException(_('Action %s is unknown') % action)
 
-  return render('editor2.mako' if ENABLE_NOTEBOOK_2.get() else 'editor.mako', request, {
-      'notebooks_json': json.dumps([editor.get_data()]),
+  return render('editor2.mako' if ENABLE_HUE_5.get() else 'editor.mako', request, {
       'options_json': json.dumps({
           'languages': [{"name": "%s SQL" % editor_type.title(), "type": editor_type}],
           'mode': 'editor',

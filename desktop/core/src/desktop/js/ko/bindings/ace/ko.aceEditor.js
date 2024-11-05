@@ -640,6 +640,16 @@ registerBinding(NAME, {
       dblClickAbfsItemSub.remove();
     });
 
+    const dblClickOfsItemSub = huePubSub.subscribe('assist.dblClickOfsItem', assistOfsEntry => {
+      if ($el.data('last-active-editor')) {
+        editor.session.insert(editor.getCursorPosition(), 'ofs://' + assistOfsEntry.path + "'");
+      }
+    });
+
+    disposeFunctions.push(() => {
+      dblClickOfsItemSub.remove();
+    });
+
     const dblClickGitItemSub = huePubSub.subscribe('assist.dblClickGitItem', assistGitEntry => {
       if ($el.data('last-active-editor')) {
         editor.session.setValue(assistGitEntry.fileContent());
@@ -658,6 +668,16 @@ registerBinding(NAME, {
 
     disposeFunctions.push(() => {
       dblClickS3ItemSub.remove();
+    });
+
+    const dblClickGSItemSub = huePubSub.subscribe('assist.dblClickGSItem', assistGSEntry => {
+      if ($el.data('last-active-editor')) {
+        editor.session.insert(editor.getCursorPosition(), "'gs://" + assistGSEntry.path + "'");
+      }
+    });
+
+    disposeFunctions.push(() => {
+      dblClickGSItemSub.remove();
     });
 
     const sampleErrorInsertSub = huePubSub.subscribe('sample.error.insert.click', popoverEntry => {
@@ -817,14 +837,12 @@ registerBinding(NAME, {
               'highlighted',
               'line'
             );
-            ace
-              .require('ace/lib/dom')
-              .importCssString(
-                '.highlighted {\
+            ace.require('ace/lib/dom').importCssString(
+              '.highlighted {\
                   background-color: #E3F7FF;\
                   position: absolute;\
               }'
-              );
+            );
             editor.scrollToLine(range.start.row + lineOffset, true, true, () => {});
           }, 0);
         }

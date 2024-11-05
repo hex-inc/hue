@@ -70,8 +70,10 @@ class ApiHelper {
       setInLocalStorage(this.getAssistCacheIdentifier({ sourceType: 'hdfs' }), {});
       setInLocalStorage(this.getAssistCacheIdentifier({ sourceType: 'adls' }), {});
       setInLocalStorage(this.getAssistCacheIdentifier({ sourceType: 'abfs' }), {});
+      setInLocalStorage(this.getAssistCacheIdentifier({ sourceType: 'ofs' }), {});
       setInLocalStorage(this.getAssistCacheIdentifier({ sourceType: 'git' }), {});
       setInLocalStorage(this.getAssistCacheIdentifier({ sourceType: 's3' }), {});
+      setInLocalStorage(this.getAssistCacheIdentifier({ sourceType: 'gs' }), {});
       setInLocalStorage(this.getAssistCacheIdentifier({ sourceType: 'collections' }), {});
       setInLocalStorage(this.getAssistCacheIdentifier({ sourceType: 'hbase' }), {});
       setInLocalStorage(this.getAssistCacheIdentifier({ sourceType: 'document' }), {});
@@ -215,7 +217,7 @@ class ApiHelper {
    *
    * @param {Object} options
    * @param {string[]} options.path
-   * @param {string} options.type - 's3', 'adls', 'abfs' or 'hdfs'
+   * @param {string} options.type - 's3', 'gs', 'adls', 'abfs', 'ofs' or 'hdfs'
    * @param {number} [options.offset]
    * @param {number} [options.length]
    * @param {boolean} [options.silenceErrors]
@@ -224,10 +226,14 @@ class ApiHelper {
     let url;
     if (options.type === 's3') {
       url = URLS.S3_API_PREFIX;
+    } else if (options.type === 'gs') {
+      url = URLS.GS_API_PREFIX;
     } else if (options.type === 'adls') {
       url = URLS.ADLS_API_PREFIX;
     } else if (options.type === 'abfs') {
       url = URLS.ABFS_API_PREFIX;
+    } else if (options.type === 'ofs') {
+      url = URLS.OFS_API_PREFIX;
     } else {
       url = URLS.HDFS_API_PREFIX;
     }
@@ -461,7 +467,71 @@ class ApiHelper {
       })
     );
   }
+  /**
+   * @param {Object} options
+   * @param {Function} options.successCallback
+   * @param {Function} [options.errorCallback]
+   * @param {boolean} [options.silenceErrors]
+   * @param {Number} [options.timeout]
+   * @param {Object} [options.editor] - Ace editor
+   *
+   * @param {string[]} options.pathParts
+   * @param {number} [options.pageSize] - Default 500
+   * @param {number} [options.page] - Default 1
+   * @param {string} [options.filter]
+   */
+  fetchOfsPath(options) {
+    let url =
+      URLS.OFS_API_PREFIX +
+      options.pathParts.join('/') +
+      '?format=json&sortby=name&descending=false&pagesize=' +
+      (options.pageSize || 500) +
+      '&pagenum=' +
+      (options.page || 1);
+    if (options.filter) {
+      url += '&filter=' + options.filter;
+    }
+    const fetchFunction = storeInCache => {
+      if (options.timeout === 0) {
+        assistErrorCallback(options)({ status: -1 });
+        return;
+      }
+      return $.ajax({
+        dataType: 'json',
+        url: url,
+        timeout: options.timeout,
+        success: data => {
+          if (
+            !data.error &&
+            !successResponseIsError(data) &&
+            typeof data.files !== 'undefined' &&
+            data.files !== null
+          ) {
+            if (data.files.length > 2 && !options.filter) {
+              storeInCache(data);
+            }
+            options.successCallback(data);
+          } else {
+            assistErrorCallback(options)(data);
+          }
+        }
+      })
+        .fail(assistErrorCallback(options))
+        .always(() => {
+          if (typeof options.editor !== 'undefined' && options.editor !== null) {
+            options.editor.hideSpinner();
+          }
+        });
+    };
 
+    return this.fetchCached(
+      $.extend({}, options, {
+        sourceType: 'ofs',
+        url: url,
+        fetchFunction: fetchFunction
+      })
+    );
+  }
   /**
    * @param {Object} options
    * @param {Function} options.successCallback
@@ -584,6 +654,74 @@ class ApiHelper {
     this.fetchCached(
       $.extend({}, options, {
         sourceType: 's3',
+        url: url,
+        fetchFunction: fetchFunction
+      })
+    );
+  }
+
+  /**
+   * @param {Object} options
+   * @param {Function} options.successCallback
+   * @param {Function} [options.errorCallback]
+   * @param {boolean} [options.silenceErrors]
+   * @param {Number} [options.timeout]
+   * @param {Object} [options.editor] - Ace editor
+   *
+   * @param {string[]} options.pathParts
+   * @param {number} [options.pageSize] - Default 500
+   * @param {number} [options.page] - Default 1
+   * @param {string} [options.filter]
+   */
+  fetchGSPath(options) {
+    options.pathParts.shift(); // remove the trailing /
+    let url =
+      URLS.GS_API_PREFIX +
+      encodeURI(options.pathParts.join('/')) +
+      '?format=json&sortby=name&descending=false&pagesize=' +
+      (options.pageSize || 500) +
+      '&pagenum=' +
+      (options.page || 1);
+    if (options.filter) {
+      url += '&filter=' + options.filter;
+    }
+    const fetchFunction = storeInCache => {
+      if (options.timeout === 0) {
+        assistErrorCallback(options)({ status: -1 });
+        return;
+      }
+
+      $.ajax({
+        dataType: 'json',
+        url: url,
+        timeout: options.timeout,
+        success: data => {
+          if (
+            !data.error &&
+            !successResponseIsError(data) &&
+            typeof data.files !== 'undefined' &&
+            data.files !== null
+          ) {
+            if (data.files.length > 2 && !options.filter) {
+              storeInCache(data);
+            }
+            options.successCallback(data);
+          } else {
+            assistErrorCallback(options)(data);
+          }
+        }
+      })
+        .fail(assistErrorCallback(options))
+        .always(() => {
+          if (typeof options.editor !== 'undefined' && options.editor !== null) {
+            options.editor.hideSpinner();
+          }
+        });
+    };
+
+    this.fetchCached(
+      $.extend({}, options, {
+        sourceType: 'gs',
         url: url,
         fetchFunction: fetchFunction
       })
@@ -1362,7 +1500,7 @@ class ApiHelper {
 
   async getHistory(options) {
     return new Promise((resolve, reject) => {
-      $.get('/api/editor/get_history', {
+      $.get('/api/v1/editor/get_history', {
         doc_type: options.type,
         limit: options.limit || 50,
         page: options.page || 1,
@@ -1500,9 +1638,12 @@ class ApiHelper {
             if (response && response.data) {
               deferred.resolve(response.data);
             } else {
-              const timeout = window.setTimeout(() => {
-                pollForAnalysis();
-              }, 1000 + tries * 500); // TODO: Adjust once fully implemented;
+              const timeout = window.setTimeout(
+                () => {
+                  pollForAnalysis();
+                },
+                1000 + tries * 500
+              ); // TODO: Adjust once fully implemented;
               promise.onCancel(() => {
                 window.clearTimeout(timeout);
               });

@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-const CleanWebpackPlugin = require('clean-webpack-plugin');
+const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const {
   BUNDLES,
   getPluginConfig,
@@ -37,13 +37,16 @@ module.exports = {
     }
   },
   output: {
+    hashFunction: 'xxhash64',
     path: __dirname + '/desktop/core/src/desktop/static/desktop/js/bundles/login',
     filename: shared.output.filename
   },
   plugins: getPluginConfig(BUNDLES.LOGIN).concat([
-    new CleanWebpackPlugin([
-      `${__dirname}/desktop/core/src/desktop/static/desktop/js/bundles/login`
-    ])
+    new CleanWebpackPlugin({
+      cleanOnceBeforeBuildPatterns: [
+        `${__dirname}/desktop/core/src/desktop/static/desktop/js/bundles/login`
+      ]
+    })
   ]),
   resolve: shared.resolve
 };

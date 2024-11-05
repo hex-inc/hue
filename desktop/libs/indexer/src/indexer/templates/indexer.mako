@@ -802,7 +802,7 @@ ${ commonheader(_("Solr Indexes"), "search", user, request, "60px") | n,unicode 
           viewModel.wizardEnabled(true);
           viewModel.currentStep(2);
         }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
           viewModel.isLoading(false);
         });
       };
@@ -823,7 +823,7 @@ ${ commonheader(_("Solr Indexes"), "search", user, request, "60px") | n,unicode 
           self.isGuessingFieldTypes(false);
           self.sample(resp.sample);
         }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
           self.isGuessingFieldTypes(false);
           viewModel.isLoading(false);
         });
@@ -846,7 +846,8 @@ ${ commonheader(_("Solr Indexes"), "search", user, request, "60px") | n,unicode 
           self.editorId(resp.history_id);
           self.jobId(resp.handle.id);
           $('#notebook').html($('#notebook-progress').html());
-          self.editorVM = new window.NotebookViewModel(resp.history_uuid, '', {
+          self.editorVM = new window.NotebookViewModel({
+            editorId: resp.history_uuid,
             user: '${ user.username }',
             userId: ${ user.id },
             languages: [{name: "Java SQL", type: "java"}],
@@ -876,7 +877,7 @@ ${ commonheader(_("Solr Indexes"), "search", user, request, "60px") | n,unicode 
           });
           viewModel.isLoading(false);
         }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
           viewModel.isLoading(false);
           self.indexingStarted(false);
           self.isIndexing(false);

@@ -16,22 +16,15 @@
 # limitations under the License.
 #
 
-from future import standard_library
-standard_library.install_aliases()
 import logging
-import sys
+from io import BytesIO as buffer_writer
 
 from thrift.transport.TTransport import *
 
 from desktop.lib.rest.http_client import HttpClient
 from desktop.lib.rest.resource import Resource
 
-if sys.version_info[0] > 2:
-  from io import BytesIO as buffer_writer
-else:
-  from cStringIO import StringIO as buffer_writer
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 
 class THttpClient(TTransportBase):
@@ -80,7 +73,10 @@ class THttpClient(TTransportBase):
     self._headers.update(timeout=str(int(ms / 1000)))
 
   def setCustomHeaders(self, headers):
-    self._headers = headers
+    if self._headers:
+      self._headers.update(headers)
+    else:
+      self._headers = headers
 
   def read(self, sz):
     return self._data

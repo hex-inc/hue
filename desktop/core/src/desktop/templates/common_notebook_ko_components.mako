@@ -19,7 +19,6 @@ import logging
 import sys
 
 from desktop import conf
-from desktop.lib.i18n import smart_unicode
 from desktop.views import _ko
 
 from beeswax.conf import DOWNLOAD_ROW_LIMIT, DOWNLOAD_BYTES_LIMIT
@@ -181,9 +180,9 @@ else:
         <li>
           <a class="download" href="javascript:void(0)" data-bind="click: downloadCsv, event: { mouseover: function(){ window.onbeforeunload = null; }, mouseout: function() { window.onbeforeunload = $(window).data('beforeunload'); } }"
           % if hasattr(DOWNLOAD_ROW_LIMIT, 'get') and DOWNLOAD_ROW_LIMIT.get() >= 0 and hasattr(DOWNLOAD_BYTES_LIMIT, 'get') and DOWNLOAD_BYTES_LIMIT.get() >= 0:
-          title="${ _('Download first %s rows or %s MB as CSV') % ( DOWNLOAD_ROW_LIMIT.get(), DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024 ) }"
+          title="${ _('Download first %s rows or %s MB as CSV') % ( DOWNLOAD_ROW_LIMIT.get(), (DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024)) }"
           % elif hasattr(DOWNLOAD_BYTES_LIMIT, 'get') and DOWNLOAD_BYTES_LIMIT.get() >= 0:
-          title="${ _('Download first %s MB as CSV') % DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024 }"
+          title="${ _('Download first %s MB as CSV') % (DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024) }"
           % else:
           title="${ _('Download first %s rows as CSV') % (hasattr(DOWNLOAD_ROW_LIMIT, 'get') and DOWNLOAD_ROW_LIMIT.get()) }"
           % endif
@@ -194,9 +193,9 @@ else:
         <li>
           <a class="download" href="javascript:void(0)" data-bind="click: downloadXls, event: { mouseover: function(){ window.onbeforeunload = null; }, mouseout: function() { window.onbeforeunload = $(window).data('beforeunload'); } }"
           % if hasattr(DOWNLOAD_ROW_LIMIT, 'get') and DOWNLOAD_ROW_LIMIT.get() >= 0 and hasattr(DOWNLOAD_BYTES_LIMIT, 'get') and DOWNLOAD_BYTES_LIMIT.get() >= 0:
-          title="${ _('Download first %s rows or %s MB as XLS') % ( DOWNLOAD_ROW_LIMIT.get(), DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024 ) }"
+          title="${ _('Download first %s rows or %s MB as XLS') % ( DOWNLOAD_ROW_LIMIT.get(), (DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024) ) }"
           % elif hasattr(DOWNLOAD_BYTES_LIMIT, 'get') and DOWNLOAD_BYTES_LIMIT.get() >= 0:
-          title="${ _('Download first %s MB as XLS') % DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024 }"
+          title="${ _('Download first %s MB as XLS') % (DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024) }"
           % else:
           title="${ _('Download first %s rows as XLS') % (hasattr(DOWNLOAD_ROW_LIMIT, 'get') and DOWNLOAD_ROW_LIMIT.get()) }"
           % endif
@@ -254,9 +253,9 @@ else:
                   <span style="width: 190px; overflow: hidden; text-overflow: ellipsis; display: inline-block; white-space: nowrap;">
                   &nbsp;
                   % if hasattr(DOWNLOAD_ROW_LIMIT, 'get') and DOWNLOAD_ROW_LIMIT.get() >= 0 and hasattr(DOWNLOAD_BYTES_LIMIT, 'get') and DOWNLOAD_BYTES_LIMIT.get() >= 0:
-                    ${ _('First %s rows or %s MB') % ( DOWNLOAD_ROW_LIMIT.get(), DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024 ) }
+                    ${ _('First %s rows or %s MB') % ( DOWNLOAD_ROW_LIMIT.get(), (DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024) ) }
                   % elif hasattr(DOWNLOAD_BYTES_LIMIT, 'get') and DOWNLOAD_BYTES_LIMIT.get() >= 0:
-                    ${ _('First %s MB') % DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024 }
+                    ${ _('First %s MB') % (DOWNLOAD_BYTES_LIMIT.get() / 1024 / 1024) }
                   % else:
                     ${ _('First %s rows') % (hasattr(DOWNLOAD_ROW_LIMIT, 'get') and DOWNLOAD_ROW_LIMIT.get()) }
                   % endif
@@ -407,12 +406,14 @@ else:
               result += '</tr>';
               data.forEach(function (row) {
                 result += '<tr>';
-                for (var i = 1; i < row.length; i++) { // Skip the row number column
-                  result += '<td>' + hueUtils.html2text(row[i]) + '</td>';
+                for (var i = 1; i < row.length; i++) { // Skip the row number column              
+                  var htmlDecodedValue = hueUtils.html2text(row[i]);
+                  var needsToStayEncoded = hueUtils.includesComplexDBTypeDefinition(htmlDecodedValue);
+                  result += '<td>' + ( needsToStayEncoded ? row[i] : htmlDecodedValue) + '</td>';
                 }
                 result += '</tr>';
               });
-              $('.clipboard-content').html(result);
+              $('.clipboard-content').html(hueUtils.deXSS(result));
             } else {
               $('.clipboard-content').html(window.I18n('Error while copying results.'));
             }
@@ -421,7 +422,9 @@ else:
         });
 
         clipboard.on('success', function (e) {
-          $.jHueNotify.info(self.snippet.result.data().length + ' ' + window.I18n('result(s) copied to the clipboard'));
+          huePubSub.publish('hue.global.info', {
+            message: self.snippet.result.data().length + ' ' + window.I18n('result(s) copied to the clipboard')
+          });
           e.clearSelection();
           $('.clipboard-content').empty();
         });
@@ -462,13 +465,13 @@ else:
                 $(self.saveResultsModalId).modal('hide');
                 huePubSub.publish('notebook.task.submitted', resp);
               } else if (resp && resp.message) {
-                $(document).trigger("error", resp.message);
+                huePubSub.publish('hue.global.error', {message: resp.message});
               }
             } else {
-              $(document).trigger('error', resp.message);
+              huePubSub.publish('hue.global.error', {message: resp.message});
             }
           }).fail(function (xhr, textStatus, errorThrown) {
-            $(document).trigger("error", xhr.responseText);
+            huePubSub.publish('hue.global.error', {message: xhr.responseText});
           }).done(function() {
             $(self.saveResultsModalId + ' button.btn-primary').button('reset');
             $(self.saveResultsModalId + ' .loader').hide();
@@ -484,9 +487,7 @@ else:
       }
 
       DownloadResultsViewModel.prototype.download = function (format) {
-        if (typeof trackOnGA == 'function') {
-          trackOnGA('notebook/download/' + format);
-        }
+        window.hueAnalytics.log('notebook', 'download' + format);
 
         var self = this;
         $.cookie('download-' + self.snippet.id(), null, { expires: -1, path: '/' })
@@ -784,105 +785,108 @@ else:
 
         self.categories = [{
           label: '${ _('Line Operations')}',
-          shortcuts: [{ shortcut: 'Ctrl-D', macShortcut: 'Command-D', description: '${ _('Remove line')}' },
-            { shortcut: 'Alt-Shift-Down', macShortcut: 'Command-Option-Down', description: '${ _('Copy lines down')}' },
-            { shortcut: 'Alt-Shift-Up', macShortcut: 'Command-Option-Up', description: '${ _('Copy lines up')}' },
-            { shortcut: 'Alt-Down', macShortcut: 'Option-Down', description: '${ _('Move lines down')}' },
-            { shortcut: 'Alt-Up', macShortcut: 'Option-Up', description: '${ _('Move lines up')}' },
-            { shortcut: 'Alt-Delete', macShortcut: 'Ctrl-K', description: '${ _('Remove to line end')}' },
-            { shortcut: 'Alt-Backspace', macShortcut: 'Command-Backspace', description: '${ _('Remove to line start')}' },
-            { shortcut: 'Ctrl-Backspace', macShortcut: 'Option-Backspace, Ctrl-Option-Backspace', description: '${ _('Remove word left')}' },
-            { shortcut: 'Ctrl-Delete', macShortcut: 'Option-Delete', description: '${ _('Remove word right')}' },
-            { shortcut: '---', macShortcut: 'Ctrl-O', description: '${ _('Split line')}' }]
+          shortcuts: [{ shortcut: 'Ctrl + D', macShortcut: 'Command + D', description: '${ _('Remove line')}' },
+            { shortcut: 'Alt + Shift + Down', macShortcut: 'Command + Option + Down', description: '${ _('Copy lines down')}' },
+            { shortcut: 'Alt + Shift + Up', macShortcut: 'Command + Option + Up', description: '${ _('Copy lines up')}' },
+            { shortcut: 'Alt + Down', macShortcut: 'Option + Down', description: '${ _('Move lines down')}' },
+            { shortcut: 'Alt + Up', macShortcut: 'Option + Up', description: '${ _('Move lines up')}' },
+            { shortcut: 'Alt + Delete', macShortcut: 'Ctrl + K', description: '${ _('Remove to line end')}' },
+            { shortcut: 'Alt + Backspace', macShortcut: 'Command + Delete', description: '${ _('Remove to line start')}' },
+            { shortcut: 'Ctrl + Backspace', macShortcut: 'Option + Delete', description: '${ _('Remove word left')}' },
+            { shortcut: 'Ctrl + Delete', macShortcut: 'Fn + Option + Delete', description: '${ _('Remove word right')}' },
+            { shortcut: '---', macShortcut: 'Ctrl + O', description: '${ _('Split line')}' }]
         },{
           label: '${ _('Selection')}',
-          shortcuts: [{ shortcut: 'Ctrl-A', macShortcut: 'Command-A', description: '${ _('Select all')}' },
-            { shortcut: 'Shift-Left', macShortcut: 'Shift-Left', description: '${ _('Select left')}' },
-            { shortcut: 'Shift-Right', macShortcut: 'Shift-Right', description: '${ _('Select right')}' },
-            { shortcut: 'Ctrl-Shift-Left', macShortcut: 'Option-Shift-Left', description: '${ _('Select word left')}' },
-            { shortcut: 'Ctrl-Shift-Right', macShortcut: 'Option-Shift-Right', description: '${ _('Select word right')}' },
-            { shortcut: 'Shift-Home', macShortcut: 'Shift-Home', description: '${ _('Select line start')}' },
-            { shortcut: 'Shift-End', macShortcut: 'Shift-End', description: '${ _('Select line end')}' },
-            { shortcut: 'Alt-Shift-Right', macShortcut: 'Command-Shift-Right', description: '${ _('Select to line end')}' },
-            { shortcut: 'Alt-Shift-Left', macShortcut: 'Command-Shift-Left', description: '${ _('Select to line start')}' },
-            { shortcut: 'Shift-Up', macShortcut: 'Shift-Up', description: '${ _('Select up')}' },
-            { shortcut: 'Shift-Down', macShortcut: 'Shift-Down', description: '${ _('Select down')}' },
-            { shortcut: 'Shift-PageUp', macShortcut: 'Shift-PageUp', description: '${ _('Select page up')}' },
-            { shortcut: 'Shift-PageDown', macShortcut: 'Shift-PageDown', description: '${ _('Select page down')}' },
-            { shortcut: 'Ctrl-Shift-Home', macShortcut: 'Command-Shift-Up', description: '${ _('Select to start')}' },
-            { shortcut: 'Ctrl-Shift-End', macShortcut: 'Command-Shift-Down', description: '${ _('Select to end')}' },
-            { shortcut: 'Ctrl-Shift-D', macShortcut: 'Command-Shift-D', description: '${ _('Duplicate selection')}' },
-            { shortcut: 'Ctrl-Shift-P', macShortcut: '---', description: '${ _('Select to matching bracket')}' }]
+          shortcuts: [{ shortcut: 'Ctrl + A', macShortcut: 'Command + A', description: '${ _('Select all')}' },
+            { shortcut: 'Shift + Left', macShortcut: 'Shift + Left', description: '${ _('Select left')}' },
+            { shortcut: 'Shift + Right', macShortcut: 'Shift + Right', description: '${ _('Select right')}' },
+            { shortcut: 'Ctrl + Shift + Left', macShortcut: 'Option + Shift + Left', description: '${ _('Select word left')}' },
+            { shortcut: 'Ctrl + Shift + Right', macShortcut: 'Option + Shift + Right', description: '${ _('Select word right')}' },
+            { shortcut: 'Shift + Home', macShortcut: 'Shift + Command + Left', description: '${ _('Select line start')}' },
+            { shortcut: 'Shift + End', macShortcut: 'Shift + Command + Right', description: '${ _('Select line end')}' },
+            { shortcut: 'Alt + Shift + Right', macShortcut: 'Command + Shift + Right', description: '${ _('Select to line end')}' },
+            { shortcut: 'Alt + Shift + Left', macShortcut: 'Command + Shift + Left', description: '${ _('Select to line start')}' },
+            { shortcut: 'Shift + Up', macShortcut: 'Shift + Up', description: '${ _('Select up')}' },
+            { shortcut: 'Shift + Down', macShortcut: 'Shift + Down', description: '${ _('Select down')}' },
+            { shortcut: 'Shift + PageUp', macShortcut: 'Shift + PageUp', description: '${ _('Select page up')}' },
+            { shortcut: 'Shift + PageDown', macShortcut: 'Shift + PageDown', description: '${ _('Select page down')}' },
+            { shortcut: 'Ctrl + Shift + Home', macShortcut: 'Command + Shift + Up', description: '${ _('Select to start')}' },
+            { shortcut: 'Ctrl + Shift + End', macShortcut: 'Command + Shift + Down', description: '${ _('Select to end')}' },
+            { shortcut: 'Ctrl + Shift + D', macShortcut: 'Command + Shift + D', description: '${ _('Duplicate selection')}' },
+            { shortcut: 'Ctrl + Shift + P', macShortcut: '---', description: '${ _('Select to matching bracket')}' }]
         },{
           label: '${ _('Multi-cursor')}',
-          shortcuts: [{ shortcut: 'Ctrl-Alt-Up', macShortcut: 'Ctrl-Option-Up', description: '${ _('Add multi-cursor above')}' },
-            { shortcut: 'Ctrl-Alt-Down', macShortcut: 'Ctrl-Option-Down', description: '${ _('Add multi-cursor below')}' },
-            { shortcut: 'Ctrl-Alt-Right', macShortcut: 'Ctrl-Option-Right', description: '${ _('Add next occurrence to multi-selection')}' },
-            { shortcut: 'Ctrl-Alt-Left', macShortcut: 'Ctrl-Option-Left', description: '${ _('Add previous occurrence to multi-selection')}' },
-            { shortcut: 'Ctrl-Alt-Shift-Up', macShortcut: 'Ctrl-Option-Shift-Up', description: '${ _('Move multicursor from current line to the line above')}' },
-            { shortcut: 'Ctrl-Alt-Shift-Down', macShortcut: 'Ctrl-Option-Shift-Down', description: '${ _('Move multicursor from current line to the line below')}' },
-            { shortcut: 'Ctrl-Alt-Shift-Right', macShortcut: 'Ctrl-Option-Shift-Right', description: '${ _('Remove current occurrence from multi-selection and move to next')}' },
-            { shortcut: 'Ctrl-Alt-Shift-Left', macShortcut: 'Ctrl-Option-Shift-Left', description: '${ _('Remove current occurrence from multi-selection and move to previous')}' },
-            { shortcut: 'Ctrl-Shift-L', macShortcut: 'Ctrl-Shift-L', description: '${ _('Select all from multi-selection')}' }]
+          shortcuts: [{ shortcut: 'Ctrl + Alt + Up', macShortcut: 'Ctrl + Option + Up', description: '${ _('Add multi-cursor above')}' },
+            { shortcut: 'Ctrl + Alt + Down', macShortcut: 'Ctrl + Option + Down', description: '${ _('Add multi-cursor below')}' },
+            { shortcut: 'Ctrl + Alt + Right', macShortcut: 'Ctrl + Option + Right', description: '${ _('Add next occurrence to multi-selection')}' },
+            { shortcut: 'Ctrl + Alt + Left', macShortcut: 'Ctrl + Option + Left', description: '${ _('Add previous occurrence to multi-selection')}' },
+            { shortcut: 'Ctrl + Alt + Shift + Up', macShortcut: 'Ctrl + Option + Shift + Up', description: '${ _('Move multicursor from current line to the line above')}' },
+            { shortcut: 'Ctrl + Alt + Shift + Down', macShortcut: 'Ctrl + Option + Shift + Down', description: '${ _('Move multicursor from current line to the line below')}' },
+            { shortcut: 'Ctrl + Alt + Shift + Right', macShortcut: 'Ctrl + Option + Shift + Right', description: '${ _('Remove current occurrence from multi-selection and move to next')}' },
+            { shortcut: 'Ctrl + Alt + Shift + Left', macShortcut: 'Ctrl + Option + Shift + Left', description: '${ _('Remove current occurrence from multi-selection and move to previous')}' },
+            { shortcut: 'Ctrl + Shift + L', macShortcut: 'Ctrl + Shift + L', description: '${ _('Select all from multi-selection')}' }]
         },{
           label: '${ _('Go to')}',
-          shortcuts: [{ shortcut: 'Left', macShortcut: 'Left, Ctrl-B', description: '${ _('Go to left')}' },
-            { shortcut: 'Right', macShortcut: 'Right, Ctrl-F', description: '${ _('Go to right')}' },
-            { shortcut: 'Ctrl-Left', macShortcut: 'Option-Left', description: '${ _('Go to word left')}' },
-            { shortcut: 'Ctrl-Right', macShortcut: 'Option-Right', description: '${ _('Go to word right')}' },
-            { shortcut: 'Up', macShortcut: 'Up, Ctrl-P', description: '${ _('Go line up')}' },
-            { shortcut: 'Down', macShortcut: 'Down, Ctrl-N', description: '${ _('Go line down')}' },
-            { shortcut: 'Alt-Left, Home', macShortcut: 'Command-Left, Home, Ctrl-A', description: '${ _('Go to line start')}' },
-            { shortcut: 'Alt-Right, End', macShortcut: 'Command-Right, End, Ctrl-E', description: '${ _('Go to line end')}' },
-            { shortcut: 'PageUp', macShortcut: 'Option-PageUp', description: '${ _('Go to page up')}' },
-            { shortcut: 'PageDown', macShortcut: 'Option-PageDown, Ctrl-V', description: '${ _('Go to page down')}' },
-            { shortcut: 'Ctrl-Home', macShortcut: 'Command-Home, Command-Up', description: '${ _('Go to start')}' },
-            { shortcut: 'Ctrl-End', macShortcut: 'Command-End, Command-Down', description: '${ _('Go to end')}' },
-            { shortcut: 'Ctrl-L, Ctrl-J', macShortcut: 'Command-L, Command-J', description: '${ _('Go to line')}' },
-            { shortcut: 'Ctrl-Down', macShortcut: 'Command-Down', description: '${ _('Scroll line down')}' },
-            { shortcut: 'Ctrl-Up', macShortcut: '---', description: '${ _('Scroll line up')}' },
-            { shortcut: 'Ctrl-P', macShortcut: '---', description: '${ _('Go to matching bracket')}' },
-            { shortcut: '---', macShortcut: 'Option-PageDown', description: '${ _('Scroll page down')}' },
-            { shortcut: '---', macShortcut: 'Option-PageUp', description: '${ _('Scroll page up')}' }]
+          shortcuts: [{ shortcut: 'Left', macShortcut: 'Left, Ctrl + B', description: '${ _('Go to left')}' },
+            { shortcut: 'Right', macShortcut: 'Right, Ctrl + F', description: '${ _('Go to right')}' },
+            { shortcut: 'Ctrl + Left', macShortcut: 'Option + Left', description: '${ _('Go to word left')}' },
+            { shortcut: 'Ctrl + Right', macShortcut: 'Option + Right', description: '${ _('Go to word right')}' },
+            { shortcut: 'Up', macShortcut: 'Up, Ctrl + P', description: '${ _('Go line up')}' },
+            { shortcut: 'Down', macShortcut: 'Down, Ctrl + N', description: '${ _('Go line down')}' },
+            { shortcut: 'Alt + Left, Home', macShortcut: 'Command + Left, Home, Ctrl + A', description: '${ _('Go to line start')}' },
+            { shortcut: 'Alt + Right, End', macShortcut: 'Command + Right, End, Ctrl + E', description: '${ _('Go to line end')}' },
+            { shortcut: 'PageUp', macShortcut: 'Fn + Up Arrow', description: '${ _('Go to page up')}' },
+            { shortcut: 'PageDown', macShortcut: 'Fn + Down Arrow, Ctrl + V', description: '${ _('Go to page down')}' },
+            { shortcut: 'Ctrl + Home', macShortcut: 'Command + Home, Command + Up', description: '${ _('Go to start')}' },
+            { shortcut: 'Ctrl + End', macShortcut: 'Command + End, Command + Down', description: '${ _('Go to end')}' },
+            { shortcut: 'Ctrl + L, Ctrl + J', macShortcut: 'Command + L, Command + J', description: '${ _('Go to line')}' },
+            { shortcut: 'Ctrl + Down', macShortcut: 'Command + Down', description: '${ _('Scroll line down')}' },
+            { shortcut: 'Ctrl + Up', macShortcut: 'Command + Up', description: '${ _('Scroll line up')}' },
+            { shortcut: 'Ctrl + P', macShortcut: '---', description: '${ _('Go to matching bracket')}' },
+            { shortcut: '---', macShortcut: 'Option + PageDown', description: '${ _('Scroll page down')}' },
+            { shortcut: '---', macShortcut: 'Option + PageUp', description: '${ _('Scroll page up')}' }]
         },{
           label: '${ _('Find/Replace')}',
-          shortcuts: [{ shortcut: 'Ctrl-F', macShortcut: 'Command-F', description: '${ _('Find')}' },
-            { shortcut: 'Ctrl-H', macShortcut: 'Command-Option-F', description: '${ _('Replace')}' },
-            { shortcut: 'Ctrl-K', macShortcut: 'Command-G', description: '${ _('Find next')}' },
-            { shortcut: 'Ctrl-Shift-K', macShortcut: 'Command-Shift-G', description: '${ _('Find previous')}' }]
+          shortcuts: [{ shortcut: 'Ctrl + F', macShortcut: 'Command + F', description: '${ _('Find')}' },
+            { shortcut: 'Ctrl + H', macShortcut: 'Command + Option + F', description: '${ _('Replace')}' },
+            { shortcut: 'Ctrl + K', macShortcut: 'Command + G', description: '${ _('Find next')}' },
+            { shortcut: 'Ctrl + Shift + K', macShortcut: 'Command + Shift + G', description: '${ _('Find previous')}' }]
         },{
           label: '${ _('Folding')}',
-          shortcuts: [{ shortcut: 'Alt-L, Ctrl-F1', macShortcut: 'Command-Option-L, Command-F1', description: '${ _('Fold selection')}' },
-            { shortcut: 'Alt-Shift-L, Ctrl-Shift-F1', macShortcut: 'Command-Option-Shift-L, Command-Shift-F1', description: '${ _('Unfold')}' },
-            { shortcut: 'Alt-0', macShortcut: 'Command-Option-0', description: '${ _('Fold all')}' },
-            { shortcut: 'Alt-Shift-0', macShortcut: 'Command-Option-Shift-0', description: '${ _('Unfold all')}' }]
+          shortcuts: [{ shortcut: 'Alt + L, Ctrl + F1', macShortcut: 'Command + Option + L, Command + F1', description: '${ _('Fold selection')}' },
+            { shortcut: 'Alt + Shift + L, Ctrl + Shift + F1', macShortcut: 'Command + Option + Shift + L, Command + Shift + F1', description: '${ _('Unfold')}' },
+            { shortcut: 'Alt + 0', macShortcut: 'Command + Option + 0', description: '${ _('Fold all')}' },
+            { shortcut: 'Alt + Shift + 0', macShortcut: 'Command + Option + Shift + 0', description: '${ _('Unfold all')}' }]
         },{
           label: '${ _('Other')}',
           shortcuts: [
-            { shortcut: 'Ctrl-Space', macShortcut: 'Ctrl-Space', description: '${ _('Autocomplete when Live Autocompletion is off')}' },
-            { shortcut: 'Ctrl-Enter', macShortcut: 'Command-Enter', description: '${ _('Execute the active query')}' },
-            { shortcut: 'Ctrl-E', macShortcut: 'Command-E', description: '${ _('Create a new query')}' },
-            { shortcut: 'Ctrl-S', macShortcut: 'Command-S', description: '${ _('Save the query')}' },
-            { shortcut: 'Ctrl-Shift-P', macShortcut: 'Command-Shift-P', description: '${ _('Switch to/from presentation mode')}' },
-            { shortcut: 'Ctrl-Alt-T', macShortcut: 'Command-Option-T', description: '${ _('Switch to/from dark editor theme')}' },
-            { shortcut: 'Ctrl-i|Ctrl-Shift-f', macShortcut: 'Command-i|Command-Shift-f', description: '${ _('Format selection or all')}' },
+            { shortcut: 'Ctrl + Space', macShortcut: 'Ctrl + Space', description: '${ _('Autocomplete when Live Autocompletion is off')}' },
+            { shortcut: 'Ctrl + Enter', macShortcut: 'Command + Enter', description: '${ _('Execute the active query')}' },
+            { shortcut: 'Ctrl + E', macShortcut: 'Command + E', description: '${ _('Create a new query')}' },
+            { shortcut: 'Ctrl + S', macShortcut: 'Command + S', description: '${ _('Save the query')}' },
+            { shortcut: 'Ctrl + Shift + P', macShortcut: 'Command + Shift + P', description: '${ _('Switch to/from presentation mode')}' },
+            { shortcut: 'Ctrl + Alt + T', macShortcut: 'Command + Option + T', description: '${ _('Switch to/from dark editor theme')}' },
+            { shortcut: 'Ctrl + i|Ctrl + Shift + f', macShortcut: 'Command + i|Command + Shift + f', description: '${ _('Format selection or all')}' },
             { shortcut: 'Tab', macShortcut: 'Tab', description: '${ _('Indent')}' },
-            { shortcut: 'Shift-Tab', macShortcut: 'Shift-Tab', description: '${ _('Outdent')}' },
-            { shortcut: 'Ctrl-Z', macShortcut: 'Command-Z', description: '${ _('Undo')}' },
-            { shortcut: 'Ctrl-Shift-Z, Ctrl-Y', macShortcut: 'Command-Shift-Z, Command-Y', description: '${ _('Redo')}' },
-            { shortcut: 'Ctrl-/', macShortcut: 'Command-/', description: '${ _('Toggle comment')}' },
-            { shortcut: 'Ctrl-T', macShortcut: 'Ctrl-T', description: '${ _('Transpose letters')}' },
-            { shortcut: 'Ctrl-Shift-U', macShortcut: 'Ctrl-Shift-U', description: '${ _('Change to lower case')}' },
-            { shortcut: 'Ctrl-U', macShortcut: 'Ctrl-U', description: '${ _('Change to upper case')}' },
+            { shortcut: 'Shift + Tab', macShortcut: 'Shift + Tab', description: '${ _('Outdent')}' },
+            { shortcut: 'Ctrl + Z', macShortcut: 'Command + Z', description: '${ _('Undo')}' },
+            { shortcut: 'Ctrl + Shift + Z, Ctrl + Y', macShortcut: 'Command + Shift + Z, Command + Y', description: '${ _('Redo')}' },
+            { shortcut: 'Ctrl + /', macShortcut: 'Command + /', description: '${ _('Toggle comment')}' },
+            { shortcut: 'Ctrl + T', macShortcut: 'Ctrl + T', description: '${ _('Transpose letters')}' },
+            { shortcut: 'Ctrl + Shift + U', macShortcut: 'Ctrl + Shift + U', description: '${ _('Change to lower case')}' },
+            { shortcut: 'Ctrl + U', macShortcut: 'Ctrl + U', description: '${ _('Change to upper case')}' },
             { shortcut: 'Insert', macShortcut: 'Insert', description: '${ _('Overwrite')}' },
-            { shortcut: 'Ctrl-Shift-E', macShortcut: 'Command-Shift-E', description: '${ _('Macros replay')}' },
-            { shortcut: 'Ctrl-Alt-E', macShortcut: '---', description: '${ _('Macros recording')}' },
+            { shortcut: 'Ctrl + Shift + E', macShortcut: 'Command + Shift + E', description: '${ _('Macros replay')}' },
+            { shortcut: 'Ctrl + Alt + E', macShortcut: '---', description: '${ _('Macros recording')}' },
             { shortcut: 'Delete', macShortcut: '---', description: '${ _('Delete')}' },
-            { shortcut: '---', macShortcut: 'Ctrl-L', description: '${ _('Center selection')}' }]
+            { shortcut: '---', macShortcut: 'Ctrl + L', description: '${ _('Center selection')}' }]
         },{
           id: 'settings',
           label: '${ _('Settings')}',
-          shortcuts: [{ shortcut: 'Ctrl - ,', macShortcut: 'Command - ,', description: '${ _('Show the settings menu where you can control autocomplete behaviour, syntax checker, dark theme and various editor settings.')}' }]
+          shortcuts: [
+            { shortcut: 'Ctrl + ,', macShortcut: 'Command + ,', description: '${ _('Show the settings menu where you can control autocomplete behaviour, syntax checker, dark theme and various editor settings.')}'},
+            { shortcut: 'Ctrl + .', macShortcut: 'Command + .', description: '${ _('Show or hide the assist panels.')}' }
+            ]
         }];
 
         self.query = ko.observable('');

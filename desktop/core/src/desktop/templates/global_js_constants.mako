@@ -20,22 +20,28 @@
   from desktop import conf
   from desktop.auth.backend import is_admin, is_hue_admin
   from desktop.conf import APP_SWITCHER_ALTUS_BASE_URL, APP_SWITCHER_MOW_BASE_URL, CUSTOM_DASHBOARD_URL, \
-      DISPLAY_APP_SWITCHER, IS_K8S_ONLY, IS_MULTICLUSTER_ONLY, USE_DEFAULT_CONFIGURATION, USE_NEW_ASSIST_PANEL, \
-      VCS, ENABLE_GIST, ENABLE_LINK_SHARING, has_channels, has_connectors, ENABLE_UNIFIED_ANALYTICS, RAZ
+      DISPLAY_APP_SWITCHER, ENABLE_HUE_5, IS_K8S_ONLY, IS_MULTICLUSTER_ONLY, USE_DEFAULT_CONFIGURATION,\
+      USE_NEW_ASSIST_PANEL, VCS, ENABLE_GIST, ENABLE_LINK_SHARING, has_channels, has_connectors,\
+      ENABLE_UNIFIED_ANALYTICS, RAZ
   from desktop.models import hue_version, _get_apps, get_cluster_config, _handle_user_dir_raz
 
   from beeswax.conf import DOWNLOAD_BYTES_LIMIT, DOWNLOAD_ROW_LIMIT, LIST_PARTITIONS_LIMIT, CLOSE_SESSIONS
   from dashboard.conf import HAS_SQL_ENABLED
-  from jobbrowser.conf import ENABLE_HISTORY_V2
-  from filebrowser.conf import SHOW_UPLOAD_BUTTON, REMOTE_STORAGE_HOME
+  from hadoop.conf import UPLOAD_CHUNK_SIZE
+  from indexer.conf import ENABLE_NEW_INDEXER
+  from jobbrowser.conf import ENABLE_HISTORY_V2, ENABLE_QUERY_BROWSER, ENABLE_HIVE_QUERY_BROWSER, MAX_JOB_FETCH, \
+      QUERY_STORE
+  from filebrowser.conf import SHOW_UPLOAD_BUTTON, REMOTE_STORAGE_HOME, MAX_FILE_SIZE_UPLOAD_LIMIT, SHOW_DOWNLOAD_BUTTON
+  from filebrowser.views import MAX_FILEEDITOR_SIZE
   from indexer.conf import ENABLE_NEW_INDEXER
   from libsaml.conf import get_logout_redirect_url, CDP_LOGOUT_URL
   from metadata.conf import has_catalog, has_readonly_catalog, has_optimizer, has_workload_analytics, OPTIMIZER, get_optimizer_url, \
       get_catalog_url, get_optimizer_mode
   from metastore.conf import ENABLE_NEW_CREATE_TABLE
   from metastore.views import has_write_access
-  from notebook.conf import ENABLE_NOTEBOOK_2, ENABLE_QUERY_ANALYSIS, ENABLE_QUERY_BUILDER, ENABLE_QUERY_SCHEDULING, ENABLE_SQL_INDEXER, \
+  from notebook.conf import ENABLE_QUERY_ANALYSIS, ENABLE_QUERY_BUILDER, ENABLE_QUERY_SCHEDULING, ENABLE_SQL_INDEXER, \
       get_ordered_interpreters, SHOW_NOTEBOOKS
+  from django.utils.translation import get_language
 
   if sys.version_info[0] > 2:
     from django.utils.translation import gettext as _
@@ -46,14 +52,69 @@
 <%namespace name="sqlDocIndex" file="/sql_doc_index.mako" />
 (function () {
   <%
-    apps = _get_apps(user)[2]
+    current_app, other_apps, apps = _get_apps(user)
   %>
-
-  window.AUTOCOMPLETE_TIMEOUT = ${ conf.EDITOR_AUTOCOMPLETE_TIMEOUT.get() };
-
   window.BANNER_TOP_HTML = '${ conf.CUSTOM.BANNER_TOP_HTML.get() }';
-
   window.DISABLE_LOCAL_STORAGE = '${ conf.DISABLE_LOCAL_STORAGE.get() }' === 'True';
+
+  window.EMBEDDABLE_PAGE_URLS = {
+    403: { url: '/403', title: '403' },
+    404: { url: '/404', title: '404' },
+    500: { url: '/500', title: '500' },
+    editor: { url: '/editor', title: '${_('Editor')}' },
+    notebook: { url: '/notebook', title: '${_('Notebook')}' },
+    metastore: { url: '/metastore/*', title: '${_('Table Browser')}' },
+    dashboard: { url: '/dashboard/*', title: '${_('Dashboard')}' },
+    oozie_workflow: { url: '/oozie/editor/workflow/*', title: '${_('Workflow')}' },
+    oozie_coordinator: { url: '/oozie/editor/coordinator/*', title: '${_('Schedule')}' },
+    oozie_bundle: { url: '/oozie/editor/bundle/*', title: '${_('Bundle')}' },
+    oozie_info: { url: '/oozie/list_oozie_info', title: '${_('Oozie')}' },
+    jobbrowser: { url: '/jobbrowser/apps', title: '${_('Job Browser')}' },
+    filebrowser: { url: '/filebrowser/view=*', title: '${_('File Browser')}' },
+    home: { url: '/home*', title: '${_('Home')}' },
+    catalog: { url: '/catalog', title: '${_('Catalog')}' },
+    indexer: { url: '/indexer/indexer/', title: '${_('Indexer')}' },
+    kafka: { url: '/indexer/topics/', title: '${_('Streams')}' },
+    collections: { url: '/dashboard/admin/collections', title: '${_('Search')}' },
+    % if hasattr(ENABLE_NEW_INDEXER, 'get') and ENABLE_NEW_INDEXER.get():
+        indexes: { url: '/indexer/indexes/*', title: '${_('Indexes')}' },
+    % else:
+        indexes: { url: '/indexer/', title: '${_('Indexes')}' },
+    % endif
+    importer: { url: '/indexer/importer/', title: '${_('Importer')}' },
+    useradmin_users: { url: '/useradmin/users', title: '${_('User Admin - Users')}' },
+    useradmin_groups: { url: '/useradmin/groups', title: '${_('User Admin - Groups')}' },
+    useradmin_newgroup: { url: '/useradmin/groups/new', title: '${_('User Admin - New Group')}' },
+    useradmin_editgroup: { url: '/useradmin/groups/edit/:group', title: '${_('User Admin - Edit Group')}' },
+    useradmin_permissions: { url: '/useradmin/permissions', title: '${_('User Admin - Permissions')}' },
+    useradmin_editpermission: { url: '/useradmin/permissions/edit/*', title: '${_('User Admin - Edit Permission')}' },
+    useradmin_configurations: { url: '/useradmin/configurations', title: '${_('User Admin - Configurations')}' },
+    useradmin_organizations: { url: '/useradmin/organizations', title: '${_('User Admin - Organizations')}' },
+    useradmin_newuser: { url: '/useradmin/users/new', title: '${_('User Admin - New User')}' },
+    useradmin_addldapusers: { url: '/useradmin/users/add_ldap_users', title: '${_('User Admin - Add LDAP User')}' },
+    useradmin_edituser: { url: '/useradmin/users/edit/:user', title: '${_('User Admin - Edit User')}' },
+    useradmin_addldapgroups: { url: '/useradmin/users/add_ldap_groups', title: '${_('User Admin - Add LDAP Groups')}' },
+    hbase: { url: '/hbase/', title: '${_('HBase Browser')}' },
+    security_hive: { url: '/security/hive', title: '${_('Security - Hive')}' },
+    security_hdfs: { url: '/security/hdfs', title: '${_('Security - HDFS')}' },
+    security_hive2: { url: '/security/hive2', title: '${_('Security - Hive')}' },
+    security_solr: { url: '/security/solr', title: '${_('Security - SOLR')}' },
+    help: { url: '/help/', title: '${_('Help')}' },
+    admin_wizard: { url: '/about/admin_wizard', title: '${_('Admin Wizard')}' },
+    logs: { url: '/logs', title: '${_('Logs')}' },
+    dump_config: { url: '/desktop/dump_config', title: '${_('Dump Configuration')}' },
+    metrics: { url: '/desktop/metrics', title: '${_('Metrics')}' },
+    taskserver: { url: '/task_server', title: '${_('Task Server')}' },
+    connectors: { url: '/desktop/connectors', title: '${_('Connectors')}' },
+    analytics: { url: '/desktop/analytics', title: '${_('Analytics')}' },
+    sqoop: { url: '/sqoop', title: '${_('Sqoop')}' },
+    jobsub: { url: '/jobsub/not_available', title: '${_('Job Designer')}' },
+    % if other_apps:
+      % for other in other_apps:
+        ${ other.display_name }: { url: '/${ other.display_name }', title: '${ other.nice_name }' },
+      % endfor
+    % endif
+  }
 
   window.CACHEABLE_TTL = {
     default: ${ conf.CUSTOM.CACHEABLE_TTL.get() },
@@ -85,6 +146,22 @@
 
   window.SAML_LOGOUT_URL = '${ CDP_LOGOUT_URL.get() }';
   window.SAML_REDIRECT_URL = '${ get_logout_redirect_url() }';
+  window.SKIP_CACHE = [
+    'home', 'oozie_workflow', 'oozie_coordinator', 'oozie_bundle', 'dashboard', 'metastore', 'filebrowser',
+    'useradmin_users', 'useradmin_groups', 'useradmin_newgroup', 'useradmin_editgroup',
+    'useradmin_permissions', 'useradmin_editpermission', 'useradmin_configurations', 'useradmin_newuser',
+    'useradmin_addldapusers', 'useradmin_addldapgroups', 'useradmin_edituser', 'useradmin_organizations',
+    'importer',
+    'security_hive', 'security_hdfs', 'security_hive2', 'security_solr', 'logs',
+    % if hasattr(ENABLE_NEW_INDEXER, 'get') and ENABLE_NEW_INDEXER.get():
+      'indexes',
+    % endif
+    % if other_apps:
+      % for other in other_apps:
+        '${ other.display_name }',
+      % endfor
+    % endif
+  ];
 
   window.HAS_GIT = ${ len(VCS.keys()) } > 0;
   window.HAS_MULTI_CLUSTER = '${ get_cluster_config(user)['has_computes'] }' === 'True';
@@ -99,11 +176,9 @@
 
   window.USE_DEFAULT_CONFIGURATION = '${ USE_DEFAULT_CONFIGURATION.get() }' === 'True';
 
-  window.USER_HAS_METADATA_WRITE_PERM = '${ user.has_hue_permission(action="write", app="metadata") }' === 'True';
-
   window.ENABLE_DOWNLOAD = '${ conf.ENABLE_DOWNLOAD.get() }' === 'True';
   window.ENABLE_NEW_CREATE_TABLE = '${ hasattr(ENABLE_NEW_CREATE_TABLE, 'get') and ENABLE_NEW_CREATE_TABLE.get()}' === 'True';
-  window.ENABLE_NOTEBOOK_2 = '${ ENABLE_NOTEBOOK_2.get() }' === 'True';
+  window.ENABLE_HUE_5 = '${ ENABLE_HUE_5.get() }' === 'True';
   window.ENABLE_PREDICT = '${ OPTIMIZER.ENABLE_PREDICT.get() }' === 'True';
   window.ENABLE_SQL_INDEXER = '${ ENABLE_SQL_INDEXER.get() }' === 'True';
 
@@ -113,7 +188,9 @@
   window.RAZ_IS_ENABLED = '${ RAZ.IS_ENABLED.get() }' === 'True';
 
   window.ENABLE_HISTORY_V2 = '${ hasattr(ENABLE_HISTORY_V2, 'get') and ENABLE_HISTORY_V2.get() }' === 'True';
-
+  window.ENABLE_HIVE_QUERY_BROWSER = '${ hasattr(ENABLE_HIVE_QUERY_BROWSER, 'get') and ENABLE_HIVE_QUERY_BROWSER.get() }' === 'True';
+  window.ENABLE_QUERY_BROWSER = '${ hasattr(ENABLE_QUERY_BROWSER, 'get') and ENABLE_QUERY_BROWSER.get() }' === 'True';
+  window.ENABLE_QUERY_STORE = '${ hasattr(QUERY_STORE, 'IS_ENABLED') and hasattr(QUERY_STORE.IS_ENABLED, 'get') and QUERY_STORE.IS_ENABLED.get() }' === 'True'
   window.ENABLE_SQL_SYNTAX_CHECK = '${ conf.ENABLE_SQL_SYNTAX_CHECK.get() }' === 'True';
 
   window.HAS_CATALOG = '${ has_catalog(request.user) }' === 'True';
@@ -134,6 +211,18 @@
 
   window.SHOW_NOTEBOOKS = '${ SHOW_NOTEBOOKS.get() }' === 'True'
   window.SHOW_UPLOAD_BUTTON = '${ hasattr(SHOW_UPLOAD_BUTTON, 'get') and SHOW_UPLOAD_BUTTON.get() }' === 'True'
+  window.SHOW_DOWNLOAD_BUTTON = '${ hasattr(SHOW_DOWNLOAD_BUTTON, 'get') and SHOW_DOWNLOAD_BUTTON.get() }' === 'True'
+  window.MAX_FILEEDITOR_SIZE = '${ MAX_FILEEDITOR_SIZE }';
+
+  window.UPLOAD_CHUNK_SIZE = ${ UPLOAD_CHUNK_SIZE.get() };
+  window.MAX_FILE_SIZE_UPLOAD_LIMIT = ${ MAX_FILE_SIZE_UPLOAD_LIMIT.get() if hasattr(MAX_FILE_SIZE_UPLOAD_LIMIT, 'get') and MAX_FILE_SIZE_UPLOAD_LIMIT.get() >= 0 else 'undefined' };
+  window.MAX_JOB_FETCH = ${ MAX_JOB_FETCH.get() if hasattr(MAX_JOB_FETCH, 'get') and MAX_JOB_FETCH.get() >= 0 else 500 };
+  window.OTHER_APPS = [];
+  % if other_apps:
+    % for other in other_apps:
+      window.OTHER_APPS.push('${ other.display_name }');
+    % endfor
+  % endif
 
   window.IS_MULTICLUSTER_ONLY = '${ IS_MULTICLUSTER_ONLY.get() }' === 'True';
   window.IS_K8S_ONLY = '${ IS_K8S_ONLY.get() }' === 'True';
@@ -162,9 +251,10 @@
 
   // TODO: Replace with json import
   window.HUE_I18n = {
-    '1 hour':  '${ _('1 hour') }',
-    '1 week':  '${ _('1 week') }',
-    '8 hours':  '${ _('8 hours') }',
+    '1 hour': '${ _('1 hour') }',
+    '1 week': '${ _('1 week') }',
+    '8 hours': '${ _('8 hours') }',
+    'A new top bar!': '${ _('A new top bar!') }',
     'Active cluster': '${ _('Active cluster') }',
     'Active compute': '${ _('Active compute') }',
     'Active database': '${ _('Active database') }',
@@ -177,18 +267,20 @@
     'Add tags...': '${ _('Add tags...') }',
     'Add': '${ _('Add') }',
     'Admin': '${ _('Admin') }',
-    'Administration': '${ _('Administration') }',
     'Administer Server': '${ _('Administer Server') }',
     'Administer Users': '${ _('Administer Users') }',
-    'aggregate': '${ _('aggregate') }',
+    'Administration': '${ _('Administration') }',
     'Aggregate': '${ _('Aggregate') }',
+    'aggregate': '${ _('aggregate') }',
     'alias': '${ _('alias') }',
     'All': '${_('All')}',
     'An error occurred refreshing the table stats. Please try again.': '${_('An error occurred refreshing the table stats. Please try again.')}',
     'Analysis was not possible for the executed query.': '${_('Analysis was not possible for the executed query.')}',
+    'And now go ': '${_('And now go ')}',
     'and': '${_('and')}',
     'Apps': '${ _('Apps') }',
     'Are you sure you want to clear the task history?': '${ _('Are you sure you want to clear the task history?') }',
+    'As a superuser, you can check system configuration from the user menu and install sample data and jobs for your users.': '${ _('As a superuser, you can check system configuration from the user menu and install sample data and jobs for your users.') }',
     'Assist': '${ _('Assist') }',
     'Assistant': '${ _('Assistant') }',
     'at cursor': '${ _('at cursor') }',
@@ -198,11 +290,12 @@
     'Bars': '${ _('Bars') }',
     'Brazil': '${ _('Brazil') }',
     'Browse column privileges': '${_('Browse column privileges')}',
-    'Browse db privileges': '${ _('Browse db privileges') }',
     'Browse DB privileges': '${_('Browse DB privileges')}',
+    'Browse db privileges': '${ _('Browse db privileges') }',
     'Browse table privileges': '${_('Browse table privileges')}',
     'Browsers': '${ _('Browsers') }',
     'Bundle': '${ _('Bundle') }',
+    'Bundles': '${ _('Bundles') }',
     'Canada': '${ _('Canada') }',
     'Cancel upload': '${ _('Cancel upload') }',
     'Cancel': '${_('Cancel')}',
@@ -232,7 +325,7 @@
     'Columns': '${ _('Columns') }',
     'columns': '${ _('columns') }',
     'Compilation': '${ _('Compilation') }',
-    'Compute': '${ _('Compute') }',
+    'Compute': '${ _('Virtual Warehouse') }',
     'condition': '${ _('condition') }',
     'Confirm History Clearing': '${ _('Confirm History Clearing') }',
     'Confirm the deletion?': '${ _('Confirm the deletion?') }',
@@ -257,6 +350,7 @@
     'Database': '${ _('Database') }',
     'database': '${ _('database') }',
     'Databases': '${ _('Databases') }',
+    'days': '${ _('days') }',
     'default': '${ _('default') }',
     'Delete document': '${ _('Delete document') }',
     'Delete this privilege': '${ _('Delete this privilege') }',
@@ -267,8 +361,10 @@
     'dir': '${ _('dir') }',
     'Directory name': '${ _('Directory name') }',
     'Directory': '${ _('Directory') }',
+    'Discover data sources with the improved data assist panel. Remember to right-click for more!': '${ _('Discover data sources with the improved data assist panel. Remember to right-click for more!') }',
     'DistCp Job': '${_('DistCp Job')}',
     'distinct': '${ _('distinct') }',
+    'Do global search and view status of jobs and notifications on the right.': '${_('Do global search and view status of jobs and notifications on the right.')}',
     'Do you really want to delete the following document(s)?': '${ _('Do you really want to delete the following document(s)?') }',
     'Document type': '${ _('Document type') }',
     'Documentation': '${ _('Documentation') }',
@@ -277,7 +373,6 @@
     'Done.': '${ _('Done.') }',
     'Drop a SQL file here': '${_('Drop a SQL file here')}',
     'Drop iPython/Zeppelin notebooks here': '${_('Drop iPython/Zeppelin notebooks here')}',
-    'Edit list...': '${ _('Edit list...') }',
     'Edit Profile': '${ _('Edit Profile') }',
     'Edit tags': '${ _('Edit tags') }',
     'Edit this privilege': '${ _('Edit this privilege') }',
@@ -315,17 +410,14 @@
     'Filter columns...': '${ _('Filter columns...') }',
     'Filter databases...': '${ _('Filter databases...') }',
     'Filter sources...': '${ _('Filter sources...') }',
-    'filter': '${ _('filter') }',
     'Filter': '${ _('Filter') }',
+    'filter': '${ _('filter') }',
     'Filter...': '${ _('Filter...') }',
     'Fix': '${ _('Fix') }',
     'Folder name': '${_('Folder name')}',
     'Foreign key': '${_('Foreign key')}',
     'Foreign keys': '${_('Foreign keys')}',
     'Format the current SQL query': '${ _('Format the current SQL query') }',
-    'Share the query selection via a link': '${ _('Share the query selection via a link') }',
-    'Share link': '${ _('Share link') }',
-    'Share as a gist': '${ _('Share as a gist') }',
     'Format': '${ _('Format') }',
     'France': '${ _('France') }',
     'Functions': '${ _('Functions') }',
@@ -343,10 +435,16 @@
     'Help': '${ _('Help') }',
     'Hide advanced': '${_('Hide advanced')}',
     'Hide Details': '${ _('Hide Details') }',
+    'History': '${ _('History') }',
     'Hive Query': '${_('Hive Query')}',
+    'Hive Queries': '${_('Hive Queries')}',
+    'Hive Schedules': '${_('Hive Schedules')}',
+    'hours': '${ _('hours') }',
+    'Hover on the app name to star it as your favorite application.': '${ _('Hover on the app name to star it as your favorite application.') }',
     'Identifiers': '${ _('Identifiers') }',
     'Ignore this type of error': '${_('Ignore this type of error')}',
     'Impala Query': '${_('Impala Query')}',
+    'Impala Queries': '${_('Impala Queries')}',
     'Import complete!': '${ _('Import complete!') }',
     'Import failed!': '${ _('Import failed!') }',
     'Import Hue Documents': '${ _('Import Hue Documents') }',
@@ -381,6 +479,7 @@
     'Language Reference': '${ _('Language Reference') }',
     'latitude': '${ _('latitude') }',
     'legend': '${ _('legend') }',
+    'Left Assist Panel': '${ _('Left Assist Panel') }',
     'Limit the number of results to...': '${ _('Limit the number of results to...') }',
     'limit': '${ _('limit') }',
     'Lines': '${ _('Lines') }',
@@ -391,6 +490,7 @@
     'longitude': '${ _('longitude') }',
     'Manage Users': '${ _('Manage Users') }',
     'Manual refresh': '${_('Manual refresh')}',
+    'Map': '${ _('Map') }',
     'MapReduce Job': '${_('MapReduce Job')}',
     'Marker Map': '${ _('Marker Map') }',
     'Markers': '${ _('Markers') }',
@@ -398,6 +498,7 @@
     'Memory': '${ _('Memory') }',
     'Metrics': '${ _('Metrics') }',
     'min': '${ _('min') }',
+    'minutes': '${ _('minutes') }',
     'Missing label configuration.': '${ _('Missing label configuration.') }',
     'Missing latitude configuration.': '${ _('Missing latitude configuration.') }',
     'Missing legend configuration.': '${ _('Missing legend configuration.') }',
@@ -414,18 +515,20 @@
     'Namespaces': '${ _('Namespaces') }',
     'New document': '${ _('New document') }',
     'New folder': '${ _('New folder') }',
+    'Next': '${ _('Next') }',
     'No clusters available': '${ _('No clusters available') }',
     'No clusters available.': '${ _('No clusters available.') }',
     'No clusters found': '${ _('No clusters found') }',
     'No columns found': '${ _('No columns found') }',
     'No computes found': '${ _('No computes found') }',
-    'No data available': '${ _('No data available') }',
     'No Data Available.': '${ _('No Data Available.') }',
+    'No data available': '${ _('No data available') }',
     'No databases found': '${ _('No databases found') }',
     'No databases found.': '${ _('No databases found.') }',
     'No documents found': '${ _('No documents found') }',
     'No entries found': '${ _('No entries found') }',
     'No indexes selected.': '${ _('No indexes selected.') }',
+    'No log available': '${ _('No log available') }',
     'No logs available at this moment.': '${ _('No logs available at this moment.') }',
     'No match found': '${ _('No match found') }',
     'No matching records': '${ _('No matching records') }',
@@ -448,6 +551,7 @@
     'Oozie Bundle': '${_('Oozie Bundle')}',
     'Oozie Schedule': '${_('Oozie Schedule')}',
     'Oozie Workflow': '${_('Oozie Workflow')}',
+    'Open apps and browsers, get help and manage your user profile.': '${_('Open apps and browsers, get help and manage your user profile.')}',
     'Open cluster': '${_('Open cluster')}',
     'Open document': '${_('Open document')}',
     'Open folder': '${_('Open folder')}',
@@ -489,19 +593,23 @@
     'Query requires a select or aggregate.': '${ _('Query requires a select or aggregate.') }',
     'Query running': '${ _('Query running') }',
     'Query settings': '${ _('Query settings') }',
+    'Query, Explore, Repeat': '${ _('Query, Explore, Repeat') }',
     'queued': '${ _('queued') }',
     'Re-create session': '${ _('Re-create session') }',
     'Re-create': '${ _('Re-create') }',
     'Read': '${ _('Read') }',
+    'Reduce': '${ _('Reduce') }',
     'Refresh': '${ _('Refresh') }',
     'region': '${ _('region') }',
     'Remove': '${ _('Remove') }',
     'Replace the editor content...': '${ _('Replace the editor content...') }',
+    'Rerun submitted.': '${ _('Rerun submitted.') }',
     'Result available': '${ _('Result available') }',
     'Result expired': '${ _('Result expired') }',
     'Result image': '${ _('Result image') }',
     'result(s) copied to the clipboard' : '${ _('result(s) copied to the clipboard') }',
     'Results have expired, rerun the query if needed.': '${ _('Results have expired, rerun the query if needed.') }',
+    'Right Assist Panel': '${ _('Right Assist Panel') }',
     'Risks': '${ _('Risks') }',
     'Running': '${ _('Running') }',
     'sample query': '${ _('sample query') }',
@@ -515,6 +623,8 @@
     'Scatter Plot': '${ _('Scatter Plot') }',
     'scatter size': '${ _('scatter size') }',
     'Schedule': '${ _('Schedule') }',
+    'Schedules': '${ _('Schedules') }',
+    'Scheduled Tasks': '${ _('Scheduled Tasks') }',
     'scope': '${ _('scope') }',
     'Search Dashboard': '${_('Search Dashboard')}',
     'Search data and saved documents...': '${ _('Search data and saved documents...') }',
@@ -533,6 +643,9 @@
     'Set as default application': '${_('Set as default application')}',
     'Set as default settings': '${_('Set as default settings')}',
     'Settings': '${ _('Settings') }',
+    'Share as a gist': '${ _('Share as a gist') }',
+    'Share link': '${ _('Share link') }',
+    'Share the query selection via a link': '${ _('Share the query selection via a link') }',
     'Share': '${ _('Share') }',
     'Sharing': '${ _('Sharing') }',
     'Shell Script': '${_('Shell Script')}',
@@ -546,9 +659,12 @@
     'Show row details': '${_('Show row details')}',
     'Show sample': '${_('Show sample')}',
     'Show view SQL': '${_('Show view SQL')}',
+    'Sidebar for navigation': '${_('Sidebar for navigation')}',
     'Sign out': '${ _('Sign out') }',
     'Size': '${ _('Size') }',
+    'SLAs': '${ _('SLAs') }',
     'Solr Search': '${ _('Solr Search') }',
+    'Some apps have a right panel with additional information to assist you in your data discovery.': '${ _('Some apps have a right panel with additional information to assist you in your data discovery.') }',
     'Sort ascending': '${ _('Sort ascending') }',
     'Sort descending': '${ _('Sort descending') }',
     'sorting': '${ _('sorting') }',
@@ -564,11 +680,13 @@
     'Stopped': '${_('Stopped')}',
     'Stopping': '${ _('Stopping') }',
     'Streams': '${ _('Streams') }',
+    'Succeeded': '${ _('Succeeded') }',
     'Success.': '${ _('Success.') }',
+    'Successfully updated Coordinator Job Properties': '${ _('Successfully updated Coordinator Job Properties') }',
     'Summary': '${_('Summary')}',
     'Table Browser': '${ _('Table Browser') }',
-    'table': '${ _('table') }',
     'Table': '${ _('Table') }',
+    'table': '${ _('table') }',
     'Tables': '${ _('Tables') }',
     'Tags can only contain 1 to 50 alphanumeric characters, _ or -.': '${ _('Tags can only contain 1 to 50 alphanumeric characters, _ or -.') }',
     'Tags could not be loaded.': '${ _('Tags could not be loaded.') }',
@@ -589,7 +707,9 @@
     'There was a problem loading the indexes': '${ _('There was a problem loading the indexes') }',
     'There was a problem loading the table preview': '${ _('There was a problem loading the table preview') }',
     'There was an error loading the document.': '${ _('There was an error loading the document.') }',
+    'This ends the tour. To see it again, click Welcome Tour from the help section in the sidebar.': '${ _('This ends the tour. To see it again, click Welcome Tour from the help section in the sidebar.') }',
     'This field does not support stats': '${ _('This field does not support stats') }',
+    'This is the main attraction, where your selected app runs.': '${ _('This is the main attraction, where your selected app runs.') }',
     'This will sync missing tables.': '${ _('This will sync missing tables.') }',
     'Timeline Chart': '${ _('Timeline Chart') }',
     'Timeline': '${ _('Timeline') }',
@@ -622,16 +742,21 @@
     'view': '${ _('view') }',
     'Views': '${ _('Views') }',
     'virtual': '${ _('virtual') }',
+    'Warehouses': '${ _('Warehouses') }',
+    'We want to introduce you to the new interface. It takes less than a minute. Ready?': '${ _('We want to introduce you to the new interface. It takes less than a minute. Ready?') }',
     'Welcome Tour': '${ _('Welcome Tour') }',
+    'Welcome to Hue 4!': '${ _('Welcome to Hue 4!') }',
     'With grant option': '${ _('With grant option') }',
     'With grant': '${ _('With grant') }',
     'Workflow': '${ _('Workflow') }',
+    'Workflows': '${ _('Workflows') }',
     'World': '${ _('World') }',
     'x-axis': '${ _('x-axis') }',
     'y-axis': '${ _('y-axis') }',
     'Yes': '${ _('Yes') }',
-    'Yes, delete': '${ _('Yes, delete') }',
+    'Yes, delete': '${ _('Yes, delete') }'
   };
+  window.HUE_LANG = '${get_language()}';
 
   window.STATIC_URLS = {
     'desktop/art/cloudera-data-warehouse-3.svg': '${ static('desktop/art/cloudera-data-warehouse-3.svg') }',
@@ -662,12 +787,16 @@
   };
 
   window.USER_VIEW_EDIT_USER_ENABLED = '${ user.has_hue_permission(action="access_view:useradmin:edit_user", app="useradmin") or is_admin(user) }' === 'True';
+  window.USER_HAS_METADATA_WRITE_PERM = '${ user.has_hue_permission(action="write", app="metadata") }' === 'True';
+  window.USER_HAS_OOZIE_ACCESS = '${ user.has_hue_permission(action="access", app="oozie") }' === 'True';
+
   window.USER_IS_ADMIN = '${ is_admin(user) }' === 'True';
   window.USER_IS_HUE_ADMIN = '${ is_hue_admin(user) }' === 'True';
   window.DJANGO_DEBUG_MODE = '${ conf.DJANGO_DEBUG_MODE.get() }' === 'True';
   window.IS_LDAP_SETUP = '${ 'desktop.auth.backend.LdapBackend' in conf.AUTH.BACKEND.get() }' === 'True';
   window.LOGGED_USERNAME = '${ user.username }';
   window.LOGGED_USER_ID = ${ user.id };
+  window.ENABLE_HELP_MENU = '${conf.ENABLE_HELP_MENU.get()}' === 'True';
 
   <%
     # TODO remove

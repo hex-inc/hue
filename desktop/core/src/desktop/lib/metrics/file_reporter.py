@@ -14,18 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-import logging
 import os
 import sys
+import json
+import logging
 import tempfile
 
 from pyformance.reporters.reporter import Reporter
 
 from desktop.lib.metrics import global_registry
 
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 
 class FileReporter(Reporter):
@@ -47,12 +46,18 @@ class FileReporter(Reporter):
     # rename the file to the real location.
 
     f = tempfile.NamedTemporaryFile(
-        mode='w' if sys.version_info[0] > 2 else 'w+b',
+        mode='w',
         dir=dirname,
         delete=False)
 
     try:
-      json.dump(self.registry.dump_metrics(), f)
+      # import threading
+      # LOG.info("===> FileReporter pid: %d thread: %d" % (os.getpid(), threading.get_ident()))
+      metrics_data = global_registry().get_metrics_shared_data() \
+        if 'rungunicornserver' in sys.argv \
+        else self.registry.dump_metrics()
+
+      json.dump(metrics_data, f)
       f.close()
 
       os.rename(f.name, self.location)
@@ -60,6 +65,7 @@ class FileReporter(Reporter):
       LOG.exception('failed to write metrics to file')
       os.remove(f.name)
       raise
+
 
 _reporter = None
 

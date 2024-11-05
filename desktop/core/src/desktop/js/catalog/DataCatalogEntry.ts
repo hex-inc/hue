@@ -123,7 +123,7 @@ export interface FieldSourceMeta extends TimestampedData {
   comment?: string | null;
   name: string;
   notFound?: boolean;
-  sample: FieldSample[][];
+  sample?: FieldSample[][];
   type: string;
   key?: ComplexDetails;
   value?: ComplexDetails;
@@ -180,7 +180,7 @@ export interface NavigatorMeta extends TimestampedData {
 }
 
 export interface TableAnalysis extends TimestampedData {
-  cols: { comment?: string | null; type: string; name: string };
+  cols: { comment?: string | null; type: string; name: string }[];
   comment?: string | null;
   details: {
     properties: { [propertyKey: string]: string };
@@ -1050,7 +1050,9 @@ export default class DataCatalogEntry {
     if (this.canHaveNavigatorMetadata()) {
       return typeof this.navigatorMeta !== 'undefined';
     }
-    return typeof this.sourceMeta !== 'undefined';
+    return (
+      typeof this.sourceMeta !== 'undefined' || typeof this.definition?.comment !== 'undefined'
+    );
   }
 
   /**
@@ -1077,7 +1079,7 @@ export default class DataCatalogEntry {
 
       if (this.sourceMeta) {
         resolve(this.sourceMeta.comment || '');
-      } else if (this.definition && this.definition.comment) {
+      } else if (typeof this.definition?.comment !== 'undefined') {
         resolve(this.definition.comment);
       } else {
         const sourceMetaPromise = this.getSourceMeta(options);
@@ -1414,6 +1416,22 @@ export default class DataCatalogEntry {
     return false;
   }
 
+  getHdfsFilePath(): string {
+    const hdfs_link = this.analysis?.hdfs_link || '';
+    return hdfs_link.replace('/filebrowser/view=', '');
+  }
+
+  /**
+   * Returns true if the entry is an Iceberg table
+   */
+  isIcebergTable(): boolean {
+    return this.analysis?.details?.stats?.table_type === 'ICEBERG';
+  }
+
+  isTransactionalTable(): boolean {
+    return this.analysis?.details?.stats?.transactional === 'true';
+  }
+
   /**
    * Returns true if the entry is a view. It will be accurate once the source meta has been loaded.
    */
@@ -1644,6 +1662,10 @@ export default class DataCatalogEntry {
       operation?: string;
     }
   ): CancellablePromise<Sample> {
+    if (this.isView()) {
+      return CancellablePromise.reject();
+    }
+
     if (this.samplePromise && this.samplePromise.cancelled) {
       this.samplePromise = undefined;
     }

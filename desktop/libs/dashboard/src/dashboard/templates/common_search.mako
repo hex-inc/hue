@@ -203,7 +203,7 @@ else:
           </li>
           <li>
             <a href="javascript:void(0);" data-bind="publish: { 'assist.show.documents': 'search-dashboard' }">
-              <svg class="hi hi-fw hi-bigger"><use xlink:href="#hi-documents"></use></svg> ${ _('Dashboards') }
+              <svg class="hi hi-fw hi-bigger"><use href="#hi-documents"></use></svg> ${ _('Dashboards') }
             </a>
           </li>
           <li data-bind="visible: columns().length != 0" class="divider"></li>
@@ -5423,7 +5423,9 @@ $(document).ready(function () {
 
   function checkResultHighlightingAvailability() {
     if (! searchViewModel.collection.idField()) {
-      $(document).trigger("warn", "${ _('Result highlighting is unavailable: the collection does not have an index field') }");
+      huePubSub.publish('hue.global.warning', {
+        message: "${ _('Result highlighting is unavailable: the collection does not have an index field') }"
+      })
     }
   }
 </script>

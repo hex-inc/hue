@@ -15,48 +15,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
+import sys
 import json
 import logging
-import sys
-import urllib.request, urllib.parse, urllib.error
+import urllib.error
+import urllib.parse
+import urllib.request
+from builtins import str
 
 from django.db.models import Q
-from django.urls import reverse
 from django.shortcuts import redirect
+from django.urls import reverse
 from django.utils.functional import wraps
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_http_methods
 
-from desktop.conf import has_connectors
-from desktop.context_processors import get_app_name
-from desktop.lib.django_util import JsonResponse, render
-from desktop.lib.exceptions_renderable import PopupException
-from desktop.models import Document2, get_cluster_config, _get_apps
-
+from beeswax.common import find_compute
 from beeswax.design import hql_query
 from beeswax.models import SavedQuery
 from beeswax.server import dbms
 from beeswax.server.dbms import get_query_server_config
+from desktop.auth.backend import is_admin
+from desktop.conf import has_connectors
+from desktop.context_processors import get_app_name
+from desktop.lib.django_util import JsonResponse, render
+from desktop.lib.exceptions_renderable import PopupException
 from desktop.lib.view_util import location_to_url
-from metadata.conf import has_optimizer, has_catalog, get_optimizer_url, get_catalog_url
+from desktop.models import Document2, _get_apps, get_cluster_config
+from metadata.conf import get_catalog_url, get_optimizer_url, has_catalog, has_optimizer
+from metastore.conf import FORCE_HS2_METADATA
+from metastore.forms import DbForm, LoadDataForm
+from metastore.settings import DJANGO_APPS
 from notebook.connectors.base import Notebook, QueryError
 from notebook.models import make_notebook
 
-from metastore.conf import FORCE_HS2_METADATA
-from metastore.forms import LoadDataForm, DbForm
-from metastore.settings import DJANGO_APPS
-
-from desktop.auth.backend import is_admin
-
-if sys.version_info[0] > 2:
-  from django.utils.translation import gettext as _
-else:
-  from django.utils.translation import ugettext as _
-
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 SAVE_RESULTS_CTAS_TIMEOUT = 300         # seconds
 
 
@@ -83,11 +76,11 @@ def index(request):
 Database Views
 """
 
+
 def databases(request):
   search_filter = request.GET.get('filter', '')
-  cluster = json.loads(request.POST.get('cluster', '{}'))
 
-  db = _get_db(user=request.user, cluster=cluster)
+  db = _get_db(user=request.user, cluster=_find_cluster(request))
   databases = db.get_databases(search_filter)
   apps_list = _get_apps(request.user, '')
 
@@ -110,7 +103,7 @@ def databases(request):
 @check_has_write_access_permission
 def drop_database(request):
   source_type = request.POST.get('source_type', request.GET.get('source_type', 'hive'))
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
 
   db = _get_db(user=request.user, source_type=source_type, cluster=cluster)
 
@@ -164,7 +157,7 @@ def alter_database(request, database):
   response = {'status': -1, 'data': ''}
 
   source_type = request.POST.get('source_type', 'hive')
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
 
   db = _get_db(user=request.user, source_type=source_type, cluster=cluster)
 
@@ -192,7 +185,7 @@ def get_database_metadata(request, database):
   response = {'status': -1, 'data': ''}
 
   source_type = request.POST.get('source_type', 'hive')
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
 
   db = _get_db(user=request.user, source_type=source_type, cluster=cluster)
 
@@ -235,13 +228,15 @@ def table_queries(request, database, table):
 """
 Table Views
 """
+
+
 def show_tables(request, database=None):
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
 
   db = _get_db(user=request.user, cluster=cluster)
 
   if database is None:
-    database = 'default' # Assume always 'default'
+    database = 'default'  # Assume always 'default'
 
   if request.GET.get("format", "html") == "json":
     try:
@@ -259,7 +254,7 @@ def show_tables(request, database=None):
 
       search_filter = request.GET.get('filter', '')
 
-      tables = db.get_tables_meta(database=database, table_names=search_filter) # SparkSql returns []
+      tables = db.get_tables_meta(database=database, table_names=search_filter)  # SparkSql returns []
       table_names = [table['name'] for table in tables]
     except Exception as e:
       raise PopupException(_('Failed to retrieve tables for database: %s' % database), detail=e)
@@ -291,7 +286,7 @@ def show_tables(request, database=None):
 
 
 def get_table_metadata(request, database, table):
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
   source_type = request.POST.get('source_type')
 
   db = _get_db(user=request.user, source_type=source_type, cluster=cluster)
@@ -304,7 +299,7 @@ def get_table_metadata(request, database, table):
       'hdfs_link': table_metadata.hdfs_link,
       'is_view': table_metadata.is_view
     }
-  except:
+  except Exception:
     msg = "Cannot get metadata for table: `%s`.`%s`"
     LOG.exception(msg) % (database, table)
     response['status'] = 1
@@ -315,9 +310,8 @@ def get_table_metadata(request, database, table):
 
 def describe_table(request, database, table):
   app_name = get_app_name(request)
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
   source_type = request.POST.get('source_type', request.GET.get('connector_id', request.GET.get('source_type', 'hive')))
-
   db = _get_db(user=request.user, source_type=source_type, cluster=cluster)
 
   try:
@@ -348,7 +342,7 @@ def describe_table(request, database, table):
     if app_name != 'impala' and table.partition_keys:
       try:
         partitions = [_massage_partition(database, table, partition) for partition in db.get_partitions(database, table)]
-      except:
+      except Exception:
         LOG.exception('Table partitions could not be retrieved')
 
     return render(renderable, request, {
@@ -380,7 +374,7 @@ def alter_table(request, database, table):
   response = {'status': -1, 'data': ''}
 
   source_type = request.POST.get('source_type', 'hive')
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
 
   db = _get_db(user=request.user, source_type=source_type, cluster=cluster)
 
@@ -415,7 +409,7 @@ def alter_column(request, database, table):
   response = {'status': -1, 'message': ''}
 
   source_type = request.POST.get('source_type', 'hive')
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
 
   db = _get_db(user=request.user, source_type=source_type, cluster=cluster)
 
@@ -460,7 +454,7 @@ def alter_column(request, database, table):
 @check_has_write_access_permission
 def drop_table(request, database):
   source_type = request.POST.get('source_type', request.GET.get('source_type', 'hive'))
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
 
   db = _get_db(user=request.user, source_type=source_type, cluster=cluster)
 
@@ -523,12 +517,13 @@ def read_table(request, database, table):
   except Exception as e:
     raise PopupException(_('Cannot read table'), detail=e)
 
+
 @check_has_write_access_permission
 def load_table(request, database, table):
   response = {'status': -1, 'data': 'None'}
 
   source_type = request.POST.get('source_type', request.GET.get('source_type', 'hive'))
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
 
   db = _get_db(user=request.user, source_type=source_type, cluster=cluster)
 
@@ -553,10 +548,7 @@ def load_table(request, database, table):
         }
         query_history = db.load_data(database, table.name, form_data, design, generate_ddl_only=generate_ddl_only)
         if generate_ddl_only:
-          if sys.version_info[0] > 2:
-            last_executed = json.loads(request.POST.get('start_time'))
-          else:
-            last_executed = json.loads(request.POST.get('start_time'), '-1')
+          last_executed = json.loads(request.POST.get('start_time'))
           job = make_notebook(
             name=_('Load data in %s.%s') % (database, table.name),
             editor_type=source_type,
@@ -593,16 +585,14 @@ def load_table(request, database, table):
            'database': database,
            'app_name': 'beeswax'
        }, force_template=True).content
-    if sys.version_info[0] > 2:
-      response['data'] = popup.decode()
-    else:
-      response['data'] = popup
+
+    response['data'] = popup.decode()
 
   return JsonResponse(response)
 
 
 def describe_partitions(request, database, table):
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
 
   db = _get_db(user=request.user, cluster=cluster)
   table_obj = db.get_table(database, table)
@@ -623,7 +613,7 @@ def describe_partitions(request, database, table):
 
   try:
     partitions = db.get_partitions(database, table_obj, partition_spec, reverse_sort=reverse_sort)
-  except:
+  except Exception:
     LOG.exception('Table partitions could not be retrieved')
     partitions = []
   massaged_partitions = [_massage_partition(database, table_obj, partition) for partition in partitions]
@@ -687,7 +677,7 @@ def _massage_partition(database, table, partition):
 
 
 def browse_partition(request, database, table, partition_spec):
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
 
   db = _get_db(user=request.user, cluster=cluster)
   try:
@@ -723,7 +713,7 @@ def read_partition(request, database, table, partition_spec):
 @check_has_write_access_permission
 def drop_partition(request, database, table):
   source_type = request.POST.get('source_type', 'hive')
-  cluster = json.loads(request.POST.get('cluster', '{}'))
+  cluster = _find_cluster(request)
 
   db = _get_db(user=request.user, source_type=source_type, cluster=cluster)
 
@@ -764,7 +754,6 @@ def has_write_access(user):
   return is_admin(user) or user.has_hue_permission(action="write", app=DJANGO_APPS[0])
 
 
-
 def _get_db(user, source_type=None, cluster=None):
   if source_type is None:
     cluster_config = get_cluster_config(user)
@@ -778,6 +767,14 @@ def _get_db(user, source_type=None, cluster=None):
 
   query_server = get_query_server_config(name=name, connector=cluster)
   return dbms.get(user, query_server)
+
+
+def _find_cluster(request):
+  cluster = json.loads(request.POST.get('cluster', '{}'))
+  source_type = request.POST.get('source_type', request.GET.get('connector_id', request.GET.get('source_type', 'hive')))
+  namespace_id = request.GET.get('namespace')
+  cluster = find_compute(cluster=cluster, user=request.user, namespace_id=namespace_id, dialect=source_type)
+  return cluster
 
 
 def _get_servername(db):

@@ -65,7 +65,7 @@ ${ commonheader(_("Bundle Editor"), "Oozie", user, request) | n,unicode }
         %if is_embeddable:
           <li>
             <a href="javascript: void(0)" data-bind="publish: { 'assist.show.documents': 'oozie-bundle2' }">
-              <svg class="hi hi-fw hi-bigger"><use xlink:href="#hi-documents"></use></svg> ${ _('Bundles') }
+              <svg class="hi hi-fw hi-bigger"><use href="#hi-documents"></use></svg> ${ _('Bundles') }
             </a>
           </li>
         %endif
@@ -365,7 +365,9 @@ ${ utils.submit_popup_event() }
 
     huePubSub.subscribe('submit.popup.return', function (data) {
       if (data.type == 'bundle') {
-        $.jHueNotify.info('${_('Bundle submitted.')}');
+        huePubSub.publish('hue.global.info', {
+          message: "${_('Bundle submitted.')}"
+        });
         huePubSub.publish('open.link', '/jobbrowser/#!id=' + data.job_id);
         huePubSub.publish('browser.job.open.link', data.job_id);
         $('.submit-modal').modal('hide');

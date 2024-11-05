@@ -28,54 +28,57 @@ Because Django's models are sometimes unfriendly, you'll want
 User to remain a django.contrib.auth.models.User object.
 """
 
+import sys
+import logging
 from builtins import object
 from importlib import import_module
 from pwd import getpwnam
 
-import logging
-import sys
-LOG = logging.getLogger(__name__)
+import requests
+import django.contrib.auth.backends
+from django.contrib import auth
+from django.core.exceptions import ImproperlyConfigured, PermissionDenied
+from django.forms import ValidationError
+from django.http import HttpResponseRedirect
+from django.urls import reverse
+
+from desktop import metrics
+from desktop.conf import AUTH, ENABLE_ORGANIZATIONS, LDAP, OIDC
+from desktop.settings import LOAD_BALANCER_COOKIE
+from liboauth.metrics import oauth_authentication_time
+from useradmin import ldap_access
+from useradmin.models import User, UserProfile, get_default_user_group, get_profile, install_sample_user
+from useradmin.organization import get_organization
+
+LOG = logging.getLogger()
 
 try:
   import ldap
 except ImportError:
   LOG.warning('ldap module not found')
+
 try:
   import pam
 except ImportError:
   LOG.warning('pam module not found')
-import requests
-
-import django.contrib.auth.backends
-from django.contrib import auth
-from django.core.exceptions import ImproperlyConfigured, PermissionDenied
-from django.http import HttpResponseRedirect
-from django.forms import ValidationError
-from django.urls import reverse
 
 try:
   from django_auth_ldap.backend import LDAPBackend
   from django_auth_ldap.config import LDAPSearch
 except ImportError:
   LOG.warning('django_auth_ldap module not found')
-  class LDAPSearch: pass
-  class LDAPSearch: pass
-from liboauth.metrics import oauth_authentication_time
+  class LDAPSearch:
+    pass
+  class LDAPSearch:
+    pass
+
 try:
   from mozilla_django_oidc.auth import OIDCAuthenticationBackend, default_username_algo
   from mozilla_django_oidc.utils import absolutify, import_from_settings
 except ImportError:
   LOG.warning('mozilla_django_oidc module not found')
-  class OIDCAuthenticationBackend: pass
-
-from desktop import metrics
-from desktop.conf import AUTH, LDAP, OIDC, ENABLE_ORGANIZATIONS
-from desktop.settings import LOAD_BALANCER_COOKIE
-
-from filebrowser.conf import REMOTE_STORAGE_HOME
-from useradmin import ldap_access
-from useradmin.models import get_profile, get_default_user_group, install_sample_user, UserProfile, User
-from useradmin.organization import get_organization
+  class OIDCAuthenticationBackend:
+    pass
 
 
 # TODO: slowly move those utils to the useradmin module
@@ -93,12 +96,14 @@ def load_augmentation_class():
     klass = getattr(mod, attr)
     LOG.info("Augmenting users with class: %s" % (klass,))
     return klass
-  except:
+  except Exception:
     LOG.exception('failed to augment class')
     raise ImproperlyConfigured("Could not find user_augmentation_class: %s" % (class_name,))
 
 
 _user_augmentation_class = None
+
+
 def get_user_augmentation_class():
   global _user_augmentation_class
 
@@ -218,11 +223,13 @@ def create_user(username, password, is_superuser=True):
 
   return user
 
+
 def find_or_create_user(username, password=None, is_superuser=True):
   user = find_user(username)
   if user is None:
     user = create_user(username, password, is_superuser)
   return user
+
 
 def ensure_has_a_group(user):
   default_group = get_default_user_group(user=user)
@@ -231,12 +238,27 @@ def ensure_has_a_group(user):
     user.groups.add(default_group)
     user.save()
 
+
 def force_username_case(username):
   if AUTH.FORCE_USERNAME_LOWERCASE.get():
     username = username.lower()
   elif AUTH.FORCE_USERNAME_UPPERCASE.get():
     username = username.upper()
   return username
+
+
+def knox_login_headers(request):
+  userprofile = get_profile(request.user)
+  try:
+    userprofile.update_data({'X-Forwarded-For': request.META['HTTP_X_FORWARDED_FOR']})
+    userprofile.save()
+  except Exception:
+    LOG.error("X-FORWARDED-FOR header not found")
+  try:
+    userprofile.update_data({'X-CSRF-TOKEN': request.META['CSRF_COOKIE']})
+    userprofile.save()
+  except Exception:
+    LOG.error("X-CSRF-TOKEN header not found")
 
 
 class DesktopBackendBase(object):
@@ -275,10 +297,7 @@ class AllowFirstUserDjangoBackend(django.contrib.auth.backends.ModelBackend):
   ModelBackend.
   """
   def authenticate(self, *args, **kwargs):
-    if sys.version_info[0] > 2:
-      request = args[0]
-    else:
-      request = None
+    request = args[0]
 
     password = kwargs['password']
 
@@ -328,10 +347,7 @@ class ImpersonationBackend(django.contrib.auth.backends.ModelBackend):
   Does not support a multiple backends setup.
   """
   def authenticate(self, *args, **kwargs):
-    if sys.version_info[0] > 2:
-      request = args[0]
-    else:
-      request = None
+    request = args[0]
 
     username = kwargs['username']
     password = kwargs['password']
@@ -425,7 +441,7 @@ class PamBackend(DesktopBackendBase):
       LOG.debug('Setting username to %s using PAM pwd module for user %s' % (getpwnam(username).pw_name, username))
       username = getpwnam(username).pw_name
 
-    if pam.authenticate(username, password, AUTH.PAM_SERVICE.get()):
+    if pam.authenticate(username, password, AUTH.PAM_SERVICE.get(), print_failure_messages=True, resetcreds=False):
       is_super = False
       if User.objects.exclude(id=install_sample_user().id).count() == 0:
         is_super = True
@@ -469,7 +485,7 @@ class LdapBackend(object):
         username = force_username_case(username)
 
         try:
-          #Avoid circular import from is_admin
+          # Avoid circular import from is_admin
           from useradmin.forms import validate_username
           validate_username(username)
 
@@ -583,10 +599,7 @@ class LdapBackend(object):
     try:
       allowed_group = self.check_ldap_access_groups(server, username)
       if allowed_group:
-        if sys.version_info[0] > 2:
-          user = self._backend.authenticate(request, username=username, password=password)
-        else:
-          user = self._backend.authenticate(username=username, password=password)
+        user = self._backend.authenticate(request, username=username, password=password)
       else:
         LOG.warning("%s not in an allowed login group" % username)
         return None
@@ -622,7 +635,7 @@ class LdapBackend(object):
     return user
 
   def check_ldap_access_groups(self, server, username):
-    #Avoid circular import from is_admin
+    # Avoid circular import from is_admin
     from useradmin.views import get_find_groups_filter
     allowed_group = False
 
@@ -645,14 +658,14 @@ class LdapBackend(object):
           return True
 
     else:
-      #Login groups not set default to True
+      # Login groups not set default to True
       allowed_group = True
 
     return allowed_group
 
   def import_groups(self, server, user):
     connection = ldap_access.get_connection_from_server(server)
-    #Avoid circular import from is_admin
+    # Avoid circular import from is_admin
     from useradmin.views import import_ldap_users
     import_ldap_users(connection, user.username, sync_groups=True, import_by_dn=False, server=server)
 
@@ -798,10 +811,7 @@ class RemoteUserDjangoBackend(django.contrib.auth.backends.RemoteUserBackend):
 
 class OIDCBackend(OIDCAuthenticationBackend):
   def authenticate(self, *args, **kwargs):
-    if sys.version_info[0] > 2:
-      self.request = args[0]
-    else:
-      self.request = None
+    self.request = args[0]
 
     if not self.request:
       return None
@@ -841,7 +851,7 @@ class OIDCBackend(OIDCAuthenticationBackend):
       user = rewrite_user(user)
 
       ensure_has_a_group(user)
-      
+
       return user
 
     return None
@@ -873,13 +883,16 @@ class OIDCBackend(OIDCAuthenticationBackend):
         return None
       username = default_username_algo(email)
 
-    return self.UserModel.objects.create_user(
-        username=username,
-        email=email,
-        first_name=first_name,
-        last_name=last_name,
-        is_superuser=self.is_hue_superuser(claims)
+    user = self.UserModel.objects.create_user(
+      username=username,
+      email=email,
+      first_name=first_name,
+      last_name=last_name,
+      is_superuser=self.is_hue_superuser(claims)
     )
+
+    ensure_has_a_group(user)
+    return user
 
   def get_or_create_user(self, access_token, id_token, verified_id):
     user = super(OIDCBackend, self).get_or_create_user(access_token, id_token, verified_id)
@@ -952,6 +965,7 @@ class OIDCBackend(OIDCAuthenticationBackend):
   # def filter_users_by_claims(self, claims):
 
   # def verify_claims(self, claims):
+
 
 def delete_oidc_session_tokens(session):
   if session:

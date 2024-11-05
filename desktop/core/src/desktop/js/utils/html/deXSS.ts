@@ -14,9 +14,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import sanitizeHtml from 'sanitize-html';
+import sanitizeHtml, { IOptions } from 'sanitize-html';
 
-const deXSS = (str?: boolean | string | number | null): string =>
-  (typeof str !== 'undefined' && sanitizeHtml(str as string)) || '';
+const deXSS = (
+  str?: undefined | boolean | string | number | null | unknown,
+  options?: IOptions
+): string => {
+  if (str === null) {
+    return 'null';
+  }
+  //Fix for sanitize HTML returns empty string for boolean false values.
+  if (typeof str === 'boolean') {
+    return str.toString();
+  }
+  if (typeof str !== 'undefined') {
+    // This handles cases where 'str' is a object, ensuring it is properly
+    // serialized into a JSON format before sanitization.
+    let finalStr: string;
+    if (typeof str === 'object' && !Array.isArray(str)) {
+      finalStr = JSON.stringify(str);
+    } else {
+      finalStr = str.toString();
+    }
+    return sanitizeHtml(finalStr, options) || '';
+  }
+  return '';
+};
 
 export default deXSS;

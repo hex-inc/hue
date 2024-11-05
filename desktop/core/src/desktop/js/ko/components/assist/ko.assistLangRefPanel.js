@@ -57,7 +57,7 @@ const TEMPLATE = `
       <div class="assist-flex-search">
         <div class="assist-filter">
           <form autocomplete="off">
-            <input class="clearable" type="text" ${ window.PREVENT_AUTOFILL_INPUT_ATTRS } placeholder="Filter..." data-bind="clearable: query, value: query, valueUpdate: 'afterkeydown'">
+            <input class="clearable" data-testid="assist-langref--filter--input" type="text" ${ window.PREVENT_AUTOFILL_INPUT_ATTRS } placeholder="Filter..." data-bind="clearable: query, value: query, valueUpdate: 'afterkeydown'">
           </form>
         </div>
       </div>
@@ -83,7 +83,7 @@ const TEMPLATE = `
       <!-- ko if: selectedTopic -->
       <div class="assist-flex-60 assist-docs-details" data-bind="with: selectedTopic">
         <div class="assist-panel-close"><button class="close" data-bind="click: function() { $component.selectedTopic(undefined); }">&times;</button></div>
-        <div data-bind="html: bodyMatch() || body()"></div>
+        <div data-bind="htmlUnsecure: bodyMatch() || body()"></div>
       </div>
       <!-- /ko -->
     </div>

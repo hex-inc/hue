@@ -15,45 +15,66 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from builtins import filter
-from builtins import range
-import itertools
-import logging
+import os
 import re
 import sys
 import time
+import logging
+import itertools
+from builtins import filter, range
 from datetime import datetime
+from urllib.parse import urlparse
+
+import pytz
+from babel import localtime
+from django.utils.translation import gettext as _
 
 from desktop.lib import export_csvxls
+from impala.conf import COORDINATOR_UI_SPNEGO
+from jobbrowser.apis.base_api import Api
 from libanalyze import analyze as analyzer, rules
 from notebook.conf import ENABLE_QUERY_ANALYSIS
 
-from jobbrowser.apis.base_api import Api
-
-if sys.version_info[0] > 2:
-  from django.utils.translation import gettext as _
-else:
-  from django.utils.translation import ugettext as _
-
-ANALYZER = rules.TopDownAnalysis() # We need to parse some files so save as global
-LOG = logging.getLogger(__name__)
+ANALYZER = rules.TopDownAnalysis()  # We need to parse some files so save as global
+LOG = logging.getLogger()
 
 try:
-  from beeswax.models import Session
-  from impala.server import get_api as get_impalad_api, _get_impala_server_url
-except Exception as e:
+  from beeswax.models import Compute, Session
+  from impala.server import _get_impala_server_url, get_api as get_impalad_api
+except ImportError as e:
   LOG.exception('Some application are not enabled: %s' % e)
 
 
 def _get_api(user, cluster=None):
-  if cluster and cluster.get('type') == 'altus-dw':
-    server_url = 'http://impala-coordinator-%(name)s:25000' % cluster
+  compute = cluster['compute'] if cluster.get('compute') else cluster
+  if compute and compute.get('type') == 'impala-compute':
+    if compute.get('id') and not (compute.get('options') and compute['options'].get('http_url')):
+      compute = Compute.objects.get(id=compute['id']).to_dict()  # Reload the full compute from db
+    if compute.get('options') and compute['options'].get('api_url'):
+      server_url = compute['options'].get('api_url')
   else:
     # TODO: multi computes if snippet.get('compute') or snippet['type'] has computes
-    application = cluster.get('interface', 'impala')
+    application = cluster['compute']['type'] if cluster.get('compute') else cluster.get('interface', 'impala')
     session = Session.objects.get_session(user, application=application)
     server_url = _get_impala_server_url(session)
   return get_impalad_api(user=user, url=server_url)
+
+
+def _convert_to_6_digit_ms_local_time(start_time):
+  if '.' in start_time:
+    time, microseconds = start_time.split('.')
+    if len(microseconds) > 6:
+      microseconds = microseconds[:6]
+    start_time = '.'.join([time, microseconds])
+  else:
+    start_time = f'{start_time}.000000'
+
+  local_tz = pytz.timezone(os.environ.get('TZ', 'UTC'))
+  # Convert to datetime object in UTC, convert to provided timezone, and then format back into a string
+  return (datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S.%f")
+          .replace(tzinfo=pytz.utc)
+          .astimezone(local_tz)
+          .strftime("%Y-%m-%d %H:%M:%S.%f"))
 
 
 class QueryApi(Api):
@@ -90,7 +111,7 @@ class QueryApi(Api):
             job['duration'],
             re.MULTILINE
         ).groups()),
-        'submitted': job['start_time'],
+        'submitted': _convert_to_6_digit_ms_local_time(job['start_time']),
         # Extra specific
         'rows_fetched': job['rows_fetched'],
         'waiting': job['waiting'],
@@ -105,8 +126,8 @@ class QueryApi(Api):
   def _time_in_ms_groups(self, groups):
     time = 0
     for x in range(0, len(groups), 3):
-      if groups[x+1]:
-        time += self._time_in_ms(groups[x+1], groups[x+2])
+      if groups[x + 1]:
+        time += self._time_in_ms(groups[x + 1], groups[x + 2])
     return time
 
   def _time_in_ms(self, time, period):
@@ -117,9 +138,9 @@ class QueryApi(Api):
     elif period == 's':
       return float(time) * 1000
     elif period == 'm':
-      return float(time) * 60000 #1000*60
+      return float(time) * 60000  # 1000*60
     elif period == 'h':
-      return float(time) * 3600000 #1000*60*60
+      return float(time) * 3600000  # 1000*60*60
     elif period == 'd':
       return float(time) * 86400000  # 1000*60*60*24
     else:
@@ -136,12 +157,16 @@ class QueryApi(Api):
       }
     app = apps.get('apps')[0]
     progress_groups = re.search(r"([\d\.\,]+)%", app.get('progress'))
+    parsed_api_url = urlparse(self.api.url)
+
     app.update({
-      'progress': float(progress_groups.group(1)) \
-          if progress_groups and progress_groups.group(1) else 100 \
+      'progress': float(progress_groups.group(1))
+          if progress_groups and progress_groups.group(1) else 100
             if self._api_status(app.get('status')) in ['SUCCEEDED', 'FAILED'] else 1,
       'type': 'queries',
-      'doc_url': "%s/query_plan?query_id=%s" % (self.api.url, appid),
+      'doc_url': '%s/query_plan?query_id=%s' % (self.api.url, appid) if not COORDINATOR_UI_SPNEGO.get() else
+                 '%s/query_plan?scheme=%s&host=%s&port=%s&query_id=%s' %
+                   (self.api.url, parsed_api_url.scheme, parsed_api_url.hostname, parsed_api_url.port, appid),
       'properties': {
         'memory': '',
         'profile': '',
@@ -166,7 +191,7 @@ class QueryApi(Api):
         elif result.get('contents') and message.get('status') != -1:
           message['message'] = result.get('contents')
 
-    return message;
+    return message
 
   def logs(self, appid, app_type, log_name=None, is_embeddable=False):
     return {'logs': ''}
@@ -185,12 +210,11 @@ class QueryApi(Api):
     else:
       return self._query(appid)
 
-
   def profile_encoded(self, appid):
     return self.api.get_query_profile_encoded(query_id=appid)
 
   def _memory(self, appid, app_type, app_property, app_filters):
-    return self.api.get_query_memory(query_id=appid);
+    return self.api.get_query_memory(query_id=appid)
 
   def _metrics(self, appid):
     query_profile = self.api.get_query_profile_encoded(appid)
@@ -224,6 +248,7 @@ class QueryApi(Api):
           return {'svg': 'hi-random'}
         else:
           return {'svg': 'hi-exchange'}
+
       def get_sigma_icon(o):
         if re.search(r'streaming', o['label_detail'], re.IGNORECASE):
           return {'svg': 'hi-sigma'}
@@ -246,6 +271,7 @@ class QueryApi(Api):
         'ANALYTIC': {'type': 'SINGULAR', 'icon': {'svg': 'hi-timeline'}},
         'UNION': {'type': 'UNION', 'icon': {'svg': 'hi-merge'}}
       }
+
       def process(node, mapping=mapping):
         node['id'], node['name'] = node['label'].split(':')
         details = mapping.get(node['name'])
@@ -306,7 +332,7 @@ class QueryApi(Api):
         return lambda app: app[name] == value
 
       for key, name in list(filter_names.items()):
-        text_filter = re.search(r"\s*("+key+")\s*:([^ ]+)", filters.get("text"))
+        text_filter = re.search(r"\s*(" + key + r")\s*:([^ ]+)", filters.get("text"))
         if text_filter and text_filter.group(1) == key:
           filter_list.append(make_lambda(name, text_filter.group(2).strip()))
     if filters.get("time"):

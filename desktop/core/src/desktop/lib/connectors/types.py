@@ -15,20 +15,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 import json
 import logging
-import sys
+
+from django.utils.translation import gettext as _
 
 from desktop.conf import CONNECTORS_BLACKLIST, CONNECTORS_WHITELIST
 from desktop.lib.exceptions_renderable import PopupException
 
-if sys.version_info[0] > 2:
-  from django.utils.translation import gettext as _
-else:
-  from django.utils.translation import ugettext as _
-
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 
 CONNECTOR_TYPES = [
@@ -332,6 +328,34 @@ CONNECTOR_TYPES = [
       'has_reference_language': False,
       'has_reference_functions': False,
       'has_use_statement': False,
+    }
+  },
+  {
+    'dialect': 'hplsql',
+    'nice_name': 'Hplsql',
+    'description': '',
+    'category': 'editor',
+    'interface': 'hiveserver2',
+    'settings': [
+      {'name': 'server_host', 'value': 'localhost'},
+      {'name': 'server_port', 'value': 10000},
+      {'name': 'is_llap', 'value': False},
+      {'name': 'use_sasl', 'value': True},
+    ],
+    'properties': {
+      'is_sql': True,
+      'sql_identifier_quote': '`',
+      'sql_identifier_comment_single': '--',
+      'has_catalog': False,
+      'has_database': True,
+      'has_table': True,
+      'has_live_queries': False,
+      'has_optimizer_risks': True,
+      'has_optimizer_values': True,
+      'has_auto_limit': False,
+      'has_reference_language': True,
+      'has_reference_functions': True,
+      'has_use_statement': True,
     }
   },
   {
@@ -858,8 +882,10 @@ CATEGORIES = [
 def get_connectors_types():
   return CONNECTOR_TYPES
 
+
 def get_connector_categories():
   return CATEGORIES
+
 
 def get_connector_by_type(dialect, interface):
   instance = [

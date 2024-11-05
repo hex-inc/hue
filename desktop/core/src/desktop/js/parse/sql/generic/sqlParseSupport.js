@@ -1007,6 +1007,7 @@ const initSqlParser = function (parser) {
     let keywords = [
       'ALTER',
       'CREATE',
+      'DELETE',
       'DESCRIBE',
       'DROP',
       'GRANT',
@@ -1111,7 +1112,8 @@ const initSqlParser = function (parser) {
       parser.suggestTables({ identifierChain });
       return;
     }
-    const lastIdentifierName = identifierChain.length > 0 ? identifierChain[identifierChain.length - 1].name : undefined;
+    const lastIdentifierName =
+      identifierChain.length > 0 ? identifierChain[identifierChain.length - 1].name : undefined;
     const tableRef = parser.yy.latestTablePrimaries.filter(tablePrimary => {
       return equalIgnoreCase(tablePrimary.alias, lastIdentifierName);
     });

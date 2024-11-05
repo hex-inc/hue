@@ -15,25 +15,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import sys
 import json
 import logging
-import os
-from lxml import etree
-import sys
 
 from django.core import serializers
+from django.utils.translation import gettext as _
+from lxml import etree
 
 from oozie import conf
-from oozie.models import Workflow, Dataset, DataInput, DataOutput
+from oozie.models import DataInput, DataOutput, Dataset, Workflow
 from oozie.utils import oozie_to_django_datetime, oozie_to_hue_frequency
 
-if sys.version_info[0] > 2:
-  from django.utils.translation import gettext as _
-else:
-  from django.utils.translation import ugettext as _
-
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 OOZIE_NAMESPACES = ['uri:oozie:coordinator:0.1', 'uri:oozie:coordinator:0.2', 'uri:oozie:coordinator:0.3', 'uri:oozie:coordinator:0.4']
 
@@ -126,6 +121,7 @@ def _reconcile_datasets(coordinator, objects, root, namespace):
     dataoutput.pk = None
     dataoutput.save()
   # @TODO(abe): reconcile instance times
+
 
 def _set_properties(coordinator, root, namespace):
   namespaces = {

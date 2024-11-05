@@ -52,7 +52,7 @@ import { hueWindow } from 'types/types';
 import sqlUtils from 'sql/sqlUtils';
 import { matchesType } from 'sql/reference/typeUtils';
 import { cancelActiveRequest } from 'api/apiUtils';
-import { findBrowserConnector, getRootFilePath } from 'config/hueConfig';
+import { findBrowserConnector, getLastKnownConfig, getRootFilePath } from 'config/hueConfig';
 import {
   findUdf,
   getArgumentDetailsForUdf,
@@ -135,6 +135,15 @@ const HIVE_DIALECT = 'hive';
 const IMPALA_DIALECT = 'impala';
 const PHOENIX_DIALECT = 'phoenix';
 
+const HIVE_VIRTUAL_COLUMNS = [
+  'BLOCK__OFFSET__INSIDE__FILE',
+  'GROUPING__ID',
+  'RAW__DATA__SIZE',
+  'ROW__ID',
+  'ROW__IS__DELETED',
+  'ROW__OFFSET__INSIDE__BLOCK'
+];
+
 const locateSubQuery = (subQueries: SubQuery[], subQueryName: string): SubQuery | undefined => {
   if (subQueries) {
     return subQueries.find(knownSubQuery => equalIgnoreCase(knownSubQuery.alias, subQueryName));
@@ -144,6 +153,7 @@ const locateSubQuery = (subQueries: SubQuery[], subQueryName: string): SubQuery 
 class AutocompleteResults {
   executor: Executor;
   editor: Ace.Editor;
+  sourceAutocompleteDisabled: boolean;
   temporaryOnly: boolean;
   activeDatabase: string;
   sqlReferenceProvider: SqlReferenceProvider;
@@ -166,6 +176,8 @@ class AutocompleteResults {
     this.sqlAnalyzer = options.sqlAnalyzerProvider?.getSqlAnalyzer(options.executor.connector());
     this.executor = options.executor;
     this.editor = options.editor;
+    this.sourceAutocompleteDisabled =
+      !!getLastKnownConfig()?.app_config?.editor?.source_autocomplete_disabled;
     this.temporaryOnly = options.temporaryOnly;
     this.activeDatabase = this.executor.database();
   }
@@ -204,31 +216,33 @@ class AutocompleteResults {
       return promise;
     };
 
-    const colRefPromise = this.handleColumnReference();
-    const databasesPromise = this.loadDatabases();
-
     trackPromise(this.handleKeywords());
-    trackPromise(this.handleColRefKeywords(colRefPromise));
     trackPromise(this.handleIdentifiers());
     trackPromise(this.handleColumnAliases());
     trackPromise(this.handleCommonTableExpressions());
     trackPromise(this.handleOptions());
-    trackPromise(this.handleFunctions(colRefPromise));
-    trackPromise(this.handleDatabases(databasesPromise));
-    const tablesPromise = trackPromise(this.handleTables(databasesPromise));
-    const columnsPromise = trackPromise(this.handleColumns(colRefPromise, tablesPromise));
-    trackPromise(this.handleValues(colRefPromise));
-    trackPromise(this.handlePaths());
 
-    if (!this.temporaryOnly) {
-      trackPromise(this.handleJoins());
-      trackPromise(this.handleJoinConditions());
-      trackPromise(this.handleAggregateFunctions());
-      trackPromise(this.handleGroupBys(columnsPromise));
-      trackPromise(this.handleOrderBys(columnsPromise));
-      trackPromise(this.handleFilters());
-      trackPromise(this.handlePopularTables(tablesPromise));
-      trackPromise(this.handlePopularColumns(columnsPromise));
+    if (!this.sourceAutocompleteDisabled) {
+      const colRefPromise = this.handleColumnReference();
+      const databasesPromise = this.loadDatabases();
+      trackPromise(this.handleColRefKeywords(colRefPromise));
+      trackPromise(this.handleFunctions(colRefPromise));
+      trackPromise(this.handleDatabases(databasesPromise));
+      const tablesPromise = trackPromise(this.handleTables(databasesPromise));
+      const columnsPromise = trackPromise(this.handleColumns(colRefPromise, tablesPromise));
+      trackPromise(this.handleValues(colRefPromise));
+      trackPromise(this.handlePaths());
+
+      if (!this.temporaryOnly) {
+        trackPromise(this.handleJoins());
+        trackPromise(this.handleJoinConditions());
+        trackPromise(this.handleAggregateFunctions());
+        trackPromise(this.handleGroupBys(columnsPromise));
+        trackPromise(this.handleOrderBys(columnsPromise));
+        trackPromise(this.handleFilters());
+        trackPromise(this.handlePopularTables(tablesPromise));
+        trackPromise(this.handlePopularColumns(columnsPromise));
+      }
     }
 
     return Promise.all(promises);
@@ -424,12 +438,18 @@ class AutocompleteResults {
         });
       } else if (type === 'UDFREF' && columnAlias.udfRef) {
         try {
-          const types = await getReturnTypesForUdf(
-            this.sqlReferenceProvider,
-            this.executor.connector(),
-            columnAlias.udfRef
-          );
-          const resolvedType = types.length === 1 ? types[0] : 'T';
+          let resolvedType = 'T';
+          if (!this.sourceAutocompleteDisabled) {
+            const types = await getReturnTypesForUdf(
+              this.sqlReferenceProvider,
+              this.executor.connector(),
+              columnAlias.udfRef
+            );
+            if (types.length === 1) {
+              resolvedType = types[0];
+            }
+          }
+
           columnAliasSuggestions.push({
             value: columnAlias.name,
             meta: resolvedType,
@@ -772,19 +792,14 @@ class AutocompleteResults {
     AutocompleteResults.mergeColumns(columnSuggestions);
 
     if (this.dialect() === HIVE_DIALECT && /[^.]$/.test(this.editor.getTextBeforeCursor())) {
-      columnSuggestions.push({
-        value: 'BLOCK__OFFSET__INSIDE__FILE',
-        meta: MetaLabels.Virtual,
-        category: Category.VirtualColumn,
-        popular: false,
-        details: { name: 'BLOCK__OFFSET__INSIDE__FILE' }
-      });
-      columnSuggestions.push({
-        value: 'INPUT__FILE__NAME',
-        meta: MetaLabels.Virtual,
-        category: Category.VirtualColumn,
-        popular: false,
-        details: { name: 'INPUT__FILE__NAME' }
+      HIVE_VIRTUAL_COLUMNS.forEach(virtualColumn => {
+        columnSuggestions.push({
+          value: virtualColumn,
+          meta: MetaLabels.Virtual,
+          category: Category.VirtualColumn,
+          popular: false,
+          details: { name: virtualColumn }
+        });
       });
     }
 
@@ -1165,6 +1180,9 @@ class AutocompleteResults {
     if (/^s3a:\/\//i.test(path)) {
       fetchFunction = 'fetchS3Path';
       path = path.substring(5);
+    } else if (/^gs:\/\//i.test(path)) {
+      fetchFunction = 'fetchGSPath';
+      path = path.substring(4);
     } else if (/^adl:\/\//i.test(path)) {
       fetchFunction = 'fetchAdlsPath';
       path = path.substring(5);
@@ -1188,6 +1206,9 @@ class AutocompleteResults {
       }
     } else if (/^hdfs:\/\//i.test(path)) {
       path = path.substring(6);
+    } else if (/^ofs:\/\//i.test(path)) {
+      fetchFunction = 'fetchOfsPath';
+      path = path.substring(5);
     }
 
     const parts = path.split('/');
@@ -1224,8 +1245,7 @@ class AutocompleteResults {
             resolve();
           },
           silenceErrors: true,
-          errorCallback: resolve,
-          timeout: (<hueWindow>window).AUTOCOMPLETE_TIMEOUT
+          errorCallback: resolve
         })
       );
     });
@@ -1523,8 +1543,8 @@ class AutocompleteResults {
         const replaceWith = table.alias
           ? table.alias + '.'
           : suggestAggregateFunctions.tables.length > 1
-          ? table.identifierChain[table.identifierChain.length - 1].name + '.'
-          : '';
+            ? table.identifierChain[table.identifierChain.length - 1].name + '.'
+            : '';
         if (table.identifierChain.length > 1) {
           substitutions.push({
             replace: new RegExp(

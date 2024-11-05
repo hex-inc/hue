@@ -17,13 +17,9 @@
 
 import sys
 
+from django.utils.translation import gettext_lazy as _
+
 from desktop.lib.conf import Config, coerce_bool
-
-if sys.version_info[0] > 2:
-  from django.utils.translation import gettext_lazy as _
-else:
-  from django.utils.translation import ugettext_lazy as _
-
 
 SOLR_URL = Config(
   key="solr_url",
@@ -40,6 +36,12 @@ SECURITY_ENABLED = Config(
   help=_("Whether Solr requires client to perform Kerberos authentication."),
   default=False,
   type=coerce_bool)
+
+DOWNLOAD_LIMIT = Config(
+  key="download_limit",
+  help=_("Default 1000 rows, max is 15K rows."),
+  default=1000,
+  type=int)
 
 # Unused: deprecated by dashboard
 LATEST = Config(

@@ -2,6 +2,13 @@
 .DS_Store
 ._*
 
+# Idea files
+.idea
+.run
+
+# pip requirements file
+.requirements
+
 # Python compiled files
 *.pyc
 *.pyo
@@ -91,7 +98,7 @@ desktop/desktop-test.db
 ext/hadoop/
 ext/hive/
 ext/oozie/
-nosetests.xml
+report.html
 oozie.sql
 tools/jenkins/ext/
 tools/jenkins/oozie.sql

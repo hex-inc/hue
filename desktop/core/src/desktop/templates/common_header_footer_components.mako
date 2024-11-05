@@ -19,7 +19,6 @@ import sys
 from django.template.defaultfilters import escape, escapejs
 
 from desktop import conf
-from desktop.lib.i18n import smart_unicode
 from desktop.views import _ko
 
 from beeswax.conf import LIST_PARTITIONS_LIMIT
@@ -31,35 +30,6 @@ if sys.version_info[0] > 2:
 else:
   from django.utils.translation import ugettext as _
 %>
-
-<%def name="header_i18n_redirection()">
-  <!--[if lt IE 9]>
-  <script type="text/javascript">
-    if (document.documentMode && document.documentMode < 9){
-      location.href = "${ url('desktop_views_unsupported') }";
-    }
-  </script>
-  <![endif]-->
-
-
-  <script type="text/javascript">
-    // check if it's a Firefox < 7
-    var _UA = navigator.userAgent.toLowerCase();
-    for (var i = 1; i < 7; i++) {
-      if (_UA.indexOf("firefox/" + i + ".") > -1) {
-        location.href = "${ url('desktop_views_unsupported') }";
-      }
-    }
-
-    // check for IE document modes
-    if (document.documentMode && document.documentMode < 9) {
-      location.href = "${ url('desktop_views_unsupported') }";
-    }
-
-    // sets a global variable to see if it's IE11 or not
-    var isIE11 = !!window.MSInputMethodContext && !!document.documentMode;
-  </script>
-</%def>
 
 <%def name="header_pollers(user, is_s3_enabled, apps)">
   <script type="text/javascript">
@@ -85,7 +55,9 @@ else:
     // Catches HTTP 502 errors
     function xhrOnreadystatechange() {
       if (this.readyState === 4 && this.status === 502) {
-        $.jHueNotify.error($('<span>').html(this.responseText).text());
+        huePubSub.publish('hue.global.error', {
+          message: $('<span>').html(this.responseText).text()
+        });
       }
       if (this._onreadystatechange) {
         return this._onreadystatechange.apply(this, arguments);
@@ -376,19 +348,6 @@ else:
           '</button>';
     }
 
-    $(document).on("info", function (e, msg) {
-      $.jHueNotify.info(msg);
-    });
-    $(document).on("warn", function (e, msg) {
-      $.jHueNotify.warn(msg);
-    });
-    window.huePubSub.subscribe('hue.error', function (msg) {
-      $.jHueNotify.error(msg);
-    });
-    $(document).on("error", function (e, msg) {
-      $.jHueNotify.error(msg);
-    });
-
     $($('#zoomDetectFrame')[0].contentWindow).resize(function () {
       $(window).trigger('zoom');
     });
@@ -396,11 +355,11 @@ else:
     %if messages:
       %for message in messages:
         %if message.tags == 'error':
-          $(document).trigger('error', '${ escapejs(escape(message)) }');
+          huePubSub.publish('hue.global.error', {message: '${ escapejs(escape(message)) }'});
         %elif message.tags == 'warning':
-          $(document).trigger('warn', '${ escapejs(escape(message)) }');
+          huePubSub.publish('hue.global.warning', { message: '${ escapejs(escape(message)) }'});
         %else:
-          $(document).trigger('info', '${ escapejs(escape(message)) }');
+          huePubSub.publish('hue.global.info', { message: '${ escapejs(escape(message)) }'});
         %endif
       %endfor
     %endif
@@ -434,7 +393,7 @@ else:
             });
           }
           window.setTimeout(function () {
-            $('.jHueNotify').remove();
+            huePubSub.publish('hide.global.alerts');
           }, 200);
         }
       }
@@ -452,7 +411,9 @@ else:
         }
         else {
           $('#login-modal').modal('hide');
-          $.jHueNotify.info('${ _('You have signed in successfully!') }');
+          huePubSub.publish('hue.global.info', {
+            message: "${ _('You have signed in successfully!') }"
+          });
           $('#login-modal .login-error').addClass('hide');
         }
       }
@@ -578,34 +539,6 @@ else:
     nv.log = function () {
     };
   }
-
-  % if collect_usage:
-    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-    })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
-
-    ga('create', 'UA-40351920-1', 'auto');
-    ga('set', 'referrer', 'http://gethue.com'); // we force the referrer to prevent leaking sensitive information
-
-    // We collect only 2 path levels: not hostname, no IDs, no anchors...
-    var _pathName = location.pathname;
-    var _splits = _pathName.substr(1).split("/");
-    _pathName = _splits[0] + (_splits.length > 1 && $.trim(_splits[1]) != "" ? "/" + _splits[1] : "");
-
-    ga('send', 'pageview', {
-      'page': '/remote/${ version }/4/' + _pathName
-    });
-
-    function trackOnGA(path) {
-      if (typeof ga != "undefined" && ga != null) {
-        ga('set', 'referrer', 'http://gethue.com'); // we force the referrer to prevent leaking sensitive information
-        ga('send', 'pageview', {
-          'page': '/remote/${ version }/4/' + path
-        });
-      }
-    }
-  % endif
 
 </script>
 </%def>

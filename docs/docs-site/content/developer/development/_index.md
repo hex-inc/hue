@@ -13,19 +13,22 @@ This section goes into greater detail on how to build and reuse the components o
 ### Dependencies
 
 * The OS specific packages are listed in the [install guide](/administrator/installation/dependencies/)
-* Python 3.6+ and Django 3 (or Python 2.7 with Django 1.11)
+* Python 3.8/3.9 and Django 3.2
 * Vue.js 3
-* Node.js ([14.0+](https://deb.nodesource.com/setup_10.x))
+* Node.js ([20.0+](https://deb.nodesource.com/setup_20.x))
 
 ### Build & Start
 
 Build once:
 
-    # If you are using Python 3.6+, set PYTHON_VER before the build, like
+    # If you are using Python 3.8, set PYTHON_VER before the build, like
     export PYTHON_VER=python3.8
 
     # Mac user might need to set
     export SKIP_PYTHONDEV_CHECK=true
+
+    # Export ROOT which should point to your Hue directory
+    export ROOT=<path_to_hue_directory>
 
     make apps
 
@@ -111,16 +114,16 @@ For checking git commit message format automatically locally:
     cp tools/githooks/* .git/hooks
     chmod +x .git/hooks/*
 
-#### Visual Code
+#### Visual Studio Code
 
-Adding the 'hue' directory as a workspace, then:
+Add the 'hue' directory as a workspace, then install the following extensions:
 
 Recommended extensions:
 
-* Python - Microsoft
-* EsLint - Dirk Baeumur
-* Mako - tommorris
-* Docker - Microsoft
+* [Python](https://marketplace.visualstudio.com/items?itemName=ms-python.python) - Microsoft
+* [EsLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) - Dirk Baeumur
+* [Mako](https://marketplace.visualstudio.com/items?itemName=tommorris.mako) - tommorris
+* [Docker](https://marketplace.visualstudio.com/items?itemName=ms-azuretools.vscode-docker) - Microsoft
 
 #### PyCharm
 
@@ -207,14 +210,14 @@ And it will automatically kick the CI and notify reviewers.
 
 ### Ship It
 
-Once we get ship it from at least one reviewer, we can push the changes to master
+Once we get ship it from at least two reviewer, we can push the changes to master
 
     git rebase origin/master
     git push origin HEAD:ci-commit-master-<yourname>
 
 * The push will auto run the tests and push it to master
-* It can be seen on https://circleci.com/gh/cloudera/workflows/hue
-  * Two builds would be made - One for Python 2.7 and another for Python 3.6
+* It can be seen on https://github.com/cloudera/hue/actions
+  * Two builds should be green - One for Python 3.8 and another for Python 3.9
   * If successful, the change would be auto merged to master
   * On failure, we will get a mail
   * Runs usually take 10-20 min
@@ -471,14 +474,9 @@ You should create an icon for your application that is a transparent png sized
 24px by 24px. Your `settings.py` file should point to your icon via the `ICON`
 variable. The `create_desktop_app` command creates a default icon for you.
 
-<div class="note">
-  If you do not define an application icon, your application will not show up
-  in the navigation bar.
-</div>
+**NOTE:** If you do not define an application icon, your application will not show up in the navigation bar.
 
-Hue ships with Twitter Bootstrap and Font Awesome 3 (http://fortawesome.github.io/Font-Awesome/)
-so you have plenty of scalable icons to choose from. You can style your elements to use them
-like this (in your mako template):
+Hue ships with Twitter Bootstrap and Font Awesome 4 so you have plenty of scalable icons to choose from. You can style your elements to use them like this (in your mako template):
 
     <!-- show a trash icon in a link -->
     <a href="#something"><i class="icon-trash"></i> Trash</a>
@@ -498,15 +496,9 @@ development mode.
 
 Run the API unit tests
 
-    ./build/env/bin/hue test unit
+    ./build/env/bin/pytest
 
-Open a pull request which will automatically trigger a [CircleCi](https://circleci.com/gh/cloudera/hue) unit test run.
-
-How to run just some parts of the tests, e.g.:
-
-    build/env/bin/hue test specific impala
-    build/env/bin/hue test specific impala.tests:TestMockedImpala
-    build/env/bin/hue test specific impala.tests:TestMockedImpala.test_basic_flow
+When opening a pull request, it will automatically trigger a [Github Action](https://github.com/cloudera/hue/actions/) that includes running the unit tests.
 
 Run the user interface tests:
 
@@ -514,40 +506,42 @@ Run the user interface tests:
 
 ### Running the API tests
 
-The ``test`` management command prepares the arguments (test app names) and passes them to nose (django_nose.nose_runner). Nose will then magically find all the tests to run.
+In the pyproject.toml file, we define the configuration for pytest, including settings to enable pytest to discover and execute the unit tests.
 
-Tests themselves should be named `*_test.py`.  These will be found as long as they're in packages covered by django.  You can use the
-unittest frameworks, or you can just name your method with the word "test" at a word boundary, and nose will find it. See `apps/hello/src/hello/hello_test.py` for an example.
+For pytest to recognize test files, you should follow the naming convention `*_test.py` or `test_*.py`. Following the pytest framework convention for test discovery is recommended. Pytest will gather test items according to the following rules:
 
-To run the unit tests (should take 5-10 minutes):
+1. Test functions or methods prefixed with test_ outside of a class.
+2. Test functions or methods prefixed with test_ inside classes prefixed with Test.
 
-    build/env/bin/hue test unit --with-xunit --with-cover
+You can refer to `desktop/libs/notebook/src/notebook/connectors/trino_tests.py` for an example of how tests are organized.
 
-To run only tests of a particular app, use:
+To run the unit tests with pytest (should not take more than 5-10 minutes):
 
-    build/env/bin/hue test specific <app>
+    ./build/env/bin/pytest
 
-e.g.
+To run the tests of a particular app, use:
 
-    build/env/bin/hue test specific filebrowser
-
-To run a specific test, use:
-
-    build/env/bin/hue test specific <app><module>:<test_func>
-    build/env/bin/hue test specific <app><module>:<class>
+    ./build/env/bin/pytest test_app_path
 
 e.g.
 
-    build/env/bin/hue test specific useradmin.tests:test_user_admin
-    build/env/bin/hue test specific useradmin.tests:AdminTest
+    ./build/env/bin/pytest apps/filebrowser
+
+To run the tests of a specific class, use:
+
+    ./build/env/bin/pytest test_file_path::class
+
+e.g.
+
+    ./build/env/bin/pytest apps/useradmin/src/useradmin/tests.py::TestUserAdmin
 
 To run a specific test in a class, use:
 
-    build/env/bin/hue test specific <app><module>:<class><test_func>
+    ./build/env/bin/pytest test_file_path::class::function
 
-To run all the tests (unit and integration, will require some live clusters or services), use:
+e.g.
 
-    build/env/bin/hue test all
+    ./build/env/bin/pytest apps/useradmin/src/useradmin/tests.py::TestUserAdmin::test_user_admin
 
 Note:
 
@@ -662,20 +656,33 @@ An example of a binding test:
 
 Add the following options:
 
-    ./build/env/bin/hue test unit --with-xunit --with-cover
+    ./build/env/bin/pytest --cov=.
+
+**Note:** Before proceeding, ensure you have installed the pytest-cov package.
 
 For js run:
 
     npm run test-coverage
 
-### Continuous Integration (CI)
+### Python Linting 
 
-[CircleCi](https://circleci.com/gh/cloudera/hue) automatically run the unit tests (Python, Javascript, linting) on branch updates and pull requests. Branches containing `ci-commit-master` will try to be auto pushed to master if the run is green and the Github permissions match.
-This logic is described in the [config.yml](https://github.com/cloudera/hue/tree/master/.circleci).
+Hue uses [Ruff](https://docs.astral.sh/ruff/) for linting its backend codebase. The Ruff related configs can be found in the [pyproject.toml](https://github.com/cloudera/hue/blob/master/pyproject.toml) file present at the project root.
 
-The runs happen in an image based on [latest Hue's image](https://hub.docker.com/u/gethue/).
+The Github Action CI checks are also leveraging the Ruff linting on branch updates and pull requests.
 
-Note: until the `desktop/ext-py` dependencies are moved to a `requirement.txt`, adding new Python modules will require adding them first to the Docker image by building a Hue branch which has them.
+To manually check for linting violations **on the modified files**, run:
+
+    ./build/env/bin/hue runruff check
+
+The above command will lint all the files modified w.r.t `origin/master` by default and to change the base branch for finding all modified files, simply add the `--diff-branch=<new_base_branch>` argument like below:
+
+    ./build/env/bin/hue runruff check --diff-branch=<new_base_branch>
+
+Ruff can also autofix most of the flagged violations:
+
+    ./build/env/bin/hue/runruff check --fix
+
+Some flagged violations can't be autofixed by Ruff and requires manual fixing. Other Ruff supported commands are listed [here](https://docs.astral.sh/ruff/configuration/#full-command-line-interface)
 
 ### Integration tests
 
@@ -729,12 +736,12 @@ And add them and the authors to the release notes:
 
 Pushing the release branch:
 
-    git push origin HEAD:branch-4.10.0
+    git push origin HEAD:branch-4.11.0
 
 Tagging the release:
 
-    git tag -a release-4.10.0 -m "release-4.10.0"
-    git push origin release-4.10.0
+    git tag -a release-4.11.0 -m "release-4.11.0"
+    git push origin release-4.11.0
 
 Draft a new release on https://github.com/cloudera/hue/releases.
 
@@ -744,7 +751,7 @@ Publish Github NPM package and Docker images at https://github.com/orgs/cloudera
 
 Building the tarball release:
 
-    git checkout -b release-4.10.0 release-4.10.0
+    git checkout -b release-4.11.0 release-4.11.0
     export PYTHON_VER=python3.8
     make prod
 
@@ -754,27 +761,27 @@ You might need to upgrade the [Mysqlclient](https://docs.gethue.com/administrato
       44 | #include "my_config.h"
           |          ^~~~~~~~~~~~~
 
-Source of the release: https://github.com/cloudera/hue/archive/release-4.10.0.zip
+Source of the release: https://github.com/cloudera/hue/archive/release-4.11.0.zip
 
 Push to the CDN:
 
-    scp hue-4.10.0.tgz root@cdn.gethue.com:/var/www/cdn.gethue.com/downloads
+    scp hue-4.11.0.tgz root@cdn.gethue.com:/var/www/cdn.gethue.com/downloads
 
 ### Docker
 
-Docker images are at https://hub.docker.com/u/gethue/:
+Docker images are at https://hub.docker.com/u/gethue/
 
-    docker build https://github.com/cloudera/hue.git#release-4.10.0 -t gethue/hue:4.10.0 -f tools/docker/hue/Dockerfile
-    docker tag gethue/hue:4.10.0 gethue/hue:latest
+    docker build https://github.com/cloudera/hue.git#release-4.11.0 -t gethue/hue:4.11.0 -f tools/docker/hue/Dockerfile
+    docker tag gethue/hue:4.11.0 gethue/hue:latest
     docker images
     docker login -u gethue
     docker push gethue/hue
-    docker push gethue/hue:4.10.0
+    docker push gethue/hue:4.11.0
 
-    docker build https://github.com/cloudera/hue.git#release-4.10.0 -t gethue/nginx:4.10.0 -f tools/docker/nginx/Dockerfile;
-    docker tag gethue/nginx:4.10.0 gethue/nginx:latest
+    docker build https://github.com/cloudera/hue.git#release-4.11.0 -t gethue/nginx:4.11.0 -f tools/docker/nginx/Dockerfile;
+    docker tag gethue/nginx:4.11.0 gethue/nginx:latest
     docker push gethue/nginx
-    docker push gethue/nginx:4.10.0
+    docker push gethue/nginx:4.11.0
 
 
 ### Kubernetes / Helm
@@ -812,8 +819,6 @@ A Pypi token will be needed. For doing a test release https://test.pypi.org/proj
 
     rm -rf dist && python3 -m build && python3 -m twine upload --repository testpypi dist/*
     python3 -m pip install --index-url https://test.pypi.org/simple/ gethue --upgrade
-
-Read more on [Python packaging](https://packaging.python.org/tutorials/packaging-projects/#generating-distribution-archives).
 
 ### Documentation
 

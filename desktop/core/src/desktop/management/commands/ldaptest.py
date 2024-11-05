@@ -27,24 +27,20 @@ Direct Bind: requires nt_domain and ldap_username_pattern
 
 This script uses HUE libraries and works in HUE setup only.
 """
+import os
+import sys
+import socket
+import logging
+
 import ldap
 import ldap.filter
-import logging
-import os
-import socket
-import sys
+from django.core.management.base import BaseCommand
+from django.utils.translation import gettext as _
 
 from desktop.conf import LDAP
-from django.core.management.base import BaseCommand
 from useradmin import ldap_access
 
-if sys.version_info[0] > 2:
-  from django.utils.translation import gettext as _
-else:
-  from django.utils.translation import ugettext as _
-
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 LOG.setLevel(logging.DEBUG)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.DEBUG)
@@ -142,6 +138,7 @@ will typically work with Active Directory/LDAP. Typically this is member
 for Active Directory and LDAP.
 """
 
+
 class Command(BaseCommand):
   def print_ldap_global_settings(self, cfg, is_multi_ldap):
     LOG.info('[desktop]')
@@ -205,7 +202,7 @@ class Command(BaseCommand):
       return err_code
 
     if not ((ldap_url.startswith("ldap") and
-          "://" in ldap_url)):
+                 "://" in ldap_url)):
       LOG.info(_(ldap_url_msg))
       LOG.warning("Check your ldap_url=%s" % ldap_url)
       return err_code
@@ -231,12 +228,12 @@ class Command(BaseCommand):
       user_name_attr = ldap_config.USERS.USER_NAME_ATTR.get()
       user_filter = ldap_config.USERS.USER_FILTER.get()
       bind_password = ldap_config.BIND_PASSWORD.get()
-      if user_name_attr=='' or ' ' in user_name_attr:
+      if user_name_attr == '' or ' ' in user_name_attr:
         LOG.info(_(user_name_attr_msg))
         LOG.warning("Could not find user_name_attr in hue.ini")
         return err_code
 
-      if user_filter=='':
+      if user_filter == '':
         LOG.info(_(user_filter_msg))
         LOG.warning("Could not find user_filter in hue.ini required for authentication")
         return err_code
@@ -286,7 +283,7 @@ class Command(BaseCommand):
       LOG.info(_(base_dn_msg))
       LOG.warning('hints: check base_dn')
       err_code = 1
-    except:
+    except Exception:
       typ, value, traceback = sys.exc_info()
       LOG.warning("%s %s" % (typ, value))
       LOG.info(_(base_dn_msg))
@@ -303,7 +300,7 @@ class Command(BaseCommand):
     if users:
       for user in users:
         LOG.info('%s' % user)
-        if user.get('username', '')=='':
+        if user.get('username', '') == '':
           LOG.info(_(user_name_attr_msg))
           LOG.warning('hints: check user_name_attr="%s"' % ldap_config.USERS.USER_NAME_ATTR.get())
           err_code = 1
@@ -333,7 +330,7 @@ class Command(BaseCommand):
       LOG.info(_(base_dn_msg))
       LOG.warning("hints: check base_dn")
       err_code = 1
-    except:
+    except Exception:
       typ, value, traceback = sys.exc_info()
       LOG.warning("%s %s" % (typ, value))
       LOG.info(_(base_dn_msg))
@@ -344,7 +341,7 @@ class Command(BaseCommand):
       LOG.warning(ldap_obj.ldapsearch_cmd())
       return err_code
     else:
-     LOG.info(ldap_obj.ldapsearch_cmd())
+      LOG.info(ldap_obj.ldapsearch_cmd())
 
     if groups:
       for grp in groups:
@@ -370,7 +367,7 @@ class Command(BaseCommand):
       LOG.info(_(base_dn_msg))
       LOG.warning('hints: check base_dn')
       err_code = 1
-    except:
+    except Exception:
       typ, value, traceback = sys.exc_info()
       LOG.warning("%s %s" % (typ, value))
       LOG.info(_(base_dn_msg))
@@ -387,7 +384,7 @@ class Command(BaseCommand):
     if groups:
       for grp in groups:
         LOG.info('%s' % grp)
-        if grp.get('members', [])==[]:
+        if grp.get('members', []) == []:
           LOG.info(_(group_member_attr_msg))
           LOG.warning('hints: check group_member_attr="%s"' % ldap_config.GROUPS.GROUP_MEMBER_ATTR.get())
           err_code = 1
@@ -412,7 +409,7 @@ class Command(BaseCommand):
       LOG.info(_(base_dn_msg))
       LOG.warning('hints: check base_dn')
       err_code = 1
-    except:
+    except Exception:
       typ, value, traceback = sys.exc_info()
       LOG.warning("%s %s" % (typ, value))
       LOG.info(_(base_dn_msg))
@@ -429,7 +426,7 @@ class Command(BaseCommand):
     if groups:
       for grp in groups:
         LOG.info('%s' % grp)
-        if grp.get('members',[])==[]:
+        if grp.get('members', []) == []:
           LOG.info(_(group_member_attr_msg))
           LOG.warning('hints: check group_member_attr="%s"' % ldap_config.GROUPS.GROUP_MEMBER_ATTR.get())
           err_code = 1
@@ -439,7 +436,7 @@ class Command(BaseCommand):
     return err_code
 
   def sys_exit(self, exit_code):
-    if exit_code!=0:
+    if exit_code != 0:
       LOG.warning('LDAP Test Command failed')
     sys.exit(exit_code)
 
@@ -471,7 +468,6 @@ class Command(BaseCommand):
 
     self.sys_exit(err_code)
 
-
   def check_single_ldap_setting(self, ldap_config, is_multi_ldap=False):
     self.print_ldap_setting(ldap_config, is_multi_ldap)
     # Basic validation check for hue.ini's ldap parameters [desktop] > [[ldap]]
@@ -489,7 +485,7 @@ class Command(BaseCommand):
         LOG.warning('ldap_url="%s"' % ldap_config.LDAP_URL.get())
         LOG.warning('bind_dn="%s"' % ldap_config.BIND_DN.get())
         err_code = 1
-      except:
+      except Exception:
         typ, value, traceback = sys.exc_info()
         LOG.warning("%s %s" % (typ, value))
         LOG.info(_(ldap_url_msg))
@@ -506,7 +502,11 @@ class Command(BaseCommand):
         LOG.warning(ldapsearch)
         self.sys_exit(err_code)
 
-      LOG.info('LDAP whoami_s() %s' % (connection.ldap_handle.whoami_s()))
+      try:
+        LOG.info('LDAP whoami_s() %s' % (connection.ldap_handle.whoami_s()))
+      except Exception:
+        LOG.warn('Not able to execute whoami_s() command')
+
       if ldap_config.TEST_LDAP_USER.get() is not None:
         err_code = self.find_ldapusers(ldap_config, connection)
         if err_code:
@@ -516,7 +516,7 @@ class Command(BaseCommand):
           group_dn = None
           try:
             group_dn = ldap.explode_dn(ldap_config.TEST_LDAP_GROUP.get())
-          except:
+          except Exception:
             group_dn = None
 
           if group_dn is not None:

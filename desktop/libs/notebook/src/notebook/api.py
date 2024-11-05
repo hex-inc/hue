@@ -15,44 +15,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from future import standard_library
-standard_library.install_aliases()
 import json
 import logging
+from urllib.parse import unquote as urllib_unquote
 
 import sqlparse
-import sys
-
-from django.urls import reverse
-from django.db.models import Q
-from django.views.decorators.http import require_GET, require_POST
 import opentracing.tracer
+from django.db.models import Q
+from django.urls import reverse
+from django.utils.translation import gettext as _
+from django.views.decorators.http import require_GET, require_POST
 
 from azure.abfs.__init__ import abfspath
-from desktop.conf import TASK_SERVER, ENABLE_CONNECTORS
-from desktop.lib.i18n import smart_str
+from desktop.conf import ENABLE_CONNECTORS
 from desktop.lib.django_util import JsonResponse
 from desktop.lib.exceptions_renderable import PopupException
-from desktop.models import Document2, Document, __paginate, _get_gist_document, FilesystemException
-from indexer.file_format import HiveFormat
+from desktop.lib.i18n import smart_str
+from desktop.models import Document, Document2, FilesystemException, __paginate, _get_gist_document
 from indexer.fields import Field
+from indexer.file_format import HiveFormat
 from metadata.conf import OPTIMIZER
-
 from notebook.conf import EXAMPLES
-from notebook.connectors.base import Notebook, QueryExpired, SessionExpired, QueryError, _get_snippet_name, patch_snippet_for_connector
-from notebook.connectors.hiveserver2 import HS2Api
+from notebook.connectors.base import Notebook, QueryError, QueryExpired, SessionExpired, _get_snippet_name, patch_snippet_for_connector
 from notebook.decorators import api_error_handler, check_document_access_permission, check_document_modify_permission
-from notebook.models import escape_rows, make_notebook, upgrade_session_properties, get_api, _get_dialect_example
+from notebook.models import _get_dialect_example, escape_rows, get_api, make_notebook, upgrade_session_properties
 
-if sys.version_info[0] > 2:
-  from urllib.parse import unquote as urllib_unquote
-  from django.utils.translation import gettext as _
-else:
-  from django.utils.translation import ugettext as _
-  from urllib import unquote as urllib_unquote
-
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 DEFAULT_HISTORY_NAME = ''
 
@@ -142,8 +130,8 @@ def _execute_notebook(request, notebook, snippet):
 
   try:
     try:
-      sessions = notebook.get('sessions') and notebook['sessions'] # Session reference for snippet execution without persisting it
-      active_executable = json.loads(request.POST.get('executable', '{}')) # Editor v2
+      sessions = notebook.get('sessions') and notebook['sessions']  # Session reference for snippet execution without persisting it
+      active_executable = json.loads(request.POST.get('executable', '{}'))  # Editor v2
       # TODO: Use statement, database etc. from active_executable
 
       if historify:
@@ -162,13 +150,13 @@ def _execute_notebook(request, notebook, snippet):
         notebook['sessions'] = pre_execute_sessions
 
       # Retrieve and remove the result from the handle
-      if response['handle'].get('sync'):
+      if response['handle'] and response['handle'].get('sync'):
         result = response['handle'].pop('result')
     finally:
       if historify:
         _snippet = [s for s in notebook['snippets'] if s['id'] == snippet['id']][0]
 
-        if 'id' in active_executable: # Editor v2
+        if 'id' in active_executable:  # Editor v2
           # notebook_executable is the 1-to-1 match of active_executable in the notebook structure
           notebook_executable = [e for e in _snippet['executor']['executables'] if e['id'] == active_executable['id']][0]
           if 'handle' in response:
@@ -180,28 +168,28 @@ def _execute_notebook(request, notebook, snippet):
             }
             notebook_executable['operationId'] = history.uuid
 
-        if 'handle' in response: # No failure
-          if 'result' not in _snippet: # Editor v2
+        if response.get('handle'):  # No failure
+          if 'result' not in _snippet:  # Editor v2
             _snippet['result'] = {}
           _snippet['result']['handle'] = response['handle']
           _snippet['result']['statements_count'] = response['handle'].get('statements_count', 1)
           _snippet['result']['statement_id'] = response['handle'].get('statement_id', 0)
           _snippet['result']['handle']['statement'] = response['handle'].get(
               'statement', snippet['statement']
-          ).strip() # For non HS2, as non multi query yet
+          ).strip()  # For non HS2, as non multi query yet
         else:
           _snippet['status'] = 'failed'
 
-        if history: # If _historify failed, history will be None.
+        if history:  # If _historify failed, history will be None.
           # If we get Atomic block exception, something underneath interpreter.execute() crashed and is not handled.
           history.update_data(notebook)
           history.save()
 
           response['history_id'] = history.id
           response['history_uuid'] = history.uuid
-          if notebook['isSaved']: # Keep track of history of saved queries
+          if notebook['isSaved']:  # Keep track of history of saved queries
             response['history_parent_uuid'] = history.dependencies.filter(type__startswith='query-').latest('last_modified').uuid
-  except QueryError as ex: # We inject the history information from _historify() to the failed queries
+  except QueryError as ex:  # We inject the history information from _historify() to the failed queries
     if response.get('history_id'):
       ex.extra['history_id'] = response['history_id']
     if response.get('history_uuid'):
@@ -382,6 +370,7 @@ def fetch_result_size(request):
   notebook = json.loads(request.POST.get('notebook', '{}'))
   snippet = json.loads(request.POST.get('snippet', '{}'))
 
+  notebook = _get_notebook(request.user, notebook, operation_id)
   snippet = _get_snippet(request.user, notebook, snippet, operation_id)
 
   with opentracing.tracer.start_span('notebook-fetch_result_size') as span:
@@ -405,7 +394,7 @@ def cancel_statement(request):
   response = {'status': -1}
 
   notebook = json.loads(request.POST.get('notebook', '{}'))
-  snippet = None
+  snippet = json.loads(request.POST.get('snippet', '{}'))
   operation_id = request.POST.get('operationId') or notebook['uuid']
 
   snippet = _get_snippet(request.user, notebook, snippet, operation_id)
@@ -434,7 +423,9 @@ def get_logs(request):
   notebook = json.loads(request.POST.get('notebook', '{}'))
   snippet = json.loads(request.POST.get('snippet', '{}'))
 
-  if operation_id:
+  notebook = _get_notebook(request.user, notebook, operation_id)
+
+  if operation_id and not notebook.get('uuid'):
     notebook['uuid'] = operation_id
 
   startFrom = request.POST.get('from')
@@ -470,8 +461,10 @@ def get_logs(request):
 
   return JsonResponse(response)
 
+
 def _save_notebook(notebook, user):
-  if notebook['snippets'][0].get('connector') and notebook['snippets'][0]['connector'].get('dialect'):  # TODO Connector unification
+  if notebook.get('type') != 'notebook' and notebook['snippets'][0].get('connector') and \
+          notebook['snippets'][0]['connector'].get('dialect'):  # TODO Connector unification
     notebook_type = 'query-%(dialect)s' % notebook['snippets'][0]['connector']
     if notebook['snippets'][0] and notebook['snippets'][0].get('executor'):
       notebook['snippets'][0]['executor']['executables'] = []
@@ -538,7 +531,7 @@ def _clear_sessions(notebook):
 def _historify(notebook, user):
   query_type = 'query-%(dialect)s' % notebook if ENABLE_CONNECTORS.get() else notebook['type']
   name = notebook['name'] if (notebook['name'] and notebook['name'].strip() != '') else DEFAULT_HISTORY_NAME
-  is_managed = notebook.get('isManaged') == True  # Prevents None
+  is_managed = bool(notebook.get('isManaged'))  # Prevents None
 
   if is_managed and Document2.objects.filter(uuid=notebook['uuid']).exists():
     history_doc = Document2.objects.get(uuid=notebook['uuid'])
@@ -592,6 +585,7 @@ def _get_statement(notebook):
     except KeyError as e:
       LOG.warning('Could not get statement from query history: %s' % e)
   return ''
+
 
 @require_GET
 @api_error_handler
@@ -710,7 +704,7 @@ def close_statement(request):
   response = {'status': -1}
 
   notebook = json.loads(request.POST.get('notebook', '{}'))
-  snippet = None
+  snippet = json.loads(request.POST.get('snippet', '{}'))
   operation_id = request.POST.get('operationId')
 
   if operation_id and not notebook.get('uuid'):
@@ -747,7 +741,11 @@ def autocomplete(request, server=None, database=None, table=None, column=None, n
 
   # Passed by check_document_access_permission but unused by APIs
   notebook = json.loads(request.POST.get('notebook', '{}'))
-  snippet = json.loads(request.POST.get('snippet', '{}'))
+  cluster = json.loads(request.POST.get('cluster', '{}'))
+  if cluster and cluster.get('type') in ('hive-compute', 'impala-compute', 'trino-compute'):
+    snippet = cluster
+  else:
+    snippet = json.loads(request.POST.get('snippet', '{}'))
   action = request.POST.get('operation', 'schema')
 
   try:
@@ -764,7 +762,7 @@ def autocomplete(request, server=None, database=None, table=None, column=None, n
 @require_POST
 @check_document_access_permission
 @api_error_handler
-def get_sample_data(request, server=None, database=None, table=None, column=None):
+def get_sample_data(request, server=None, database=None, table=None, column=None, nested=None):
   response = {'status': -1}
 
   # Passed by check_document_access_permission but unused by APIs
@@ -773,7 +771,7 @@ def get_sample_data(request, server=None, database=None, table=None, column=None
   is_async = json.loads(request.POST.get('async', 'false'))
   operation = json.loads(request.POST.get('operation', '"default"'))
 
-  sample_data = get_api(request, snippet).get_sample_data(snippet, database, table, column, is_async=is_async, operation=operation)
+  sample_data = get_api(request, snippet).get_sample_data(snippet, database, table, column, nested, is_async=is_async, operation=operation)
   response.update(sample_data)
 
   response['status'] = 0
@@ -801,7 +799,7 @@ def format(request):
   response = {'status': 0}
 
   statements = request.POST.get('statements', '')
-  response['formatted_statements'] = sqlparse.format(statements, reindent=True, keyword_case='upper') # SQL only currently
+  response['formatted_statements'] = sqlparse.format(statements, reindent=True, keyword_case='upper')  # SQL only currently
 
   return JsonResponse(response)
 
@@ -823,7 +821,7 @@ def export_result(request):
 
   api = get_api(request, snippet)
 
-  if data_format == 'hdfs-file': # Blocking operation, like downloading
+  if data_format == 'hdfs-file':  # Blocking operation, like downloading
     if request.fs.isdir(destination):
       if notebook.get('name'):
         destination += '/%(name)s.csv' % notebook
@@ -1031,9 +1029,14 @@ def describe(request, database, table=None, column=None):
   notebook = json.loads(request.POST.get('notebook', '{}'))
   source_type = request.POST.get('source_type', '')
   connector = json.loads(request.POST.get('connector', '{}'))
+  cluster = json.loads(request.POST.get('cluster', '{}'))
+  if cluster and cluster.get('type') != 'direct':
+    connector = cluster
 
-  snippet = {'type': source_type, 'connector': connector}
-  patch_snippet_for_connector(snippet)
+  compute = json.loads(request.POST.get('compute', '{}'))
+
+  snippet = {'type': source_type, 'connector': connector, 'compute': compute}
+  patch_snippet_for_connector(snippet, user=request.user)
 
   describe = get_api(request, snippet).describe(notebook, snippet, database, table, column=column)
   response.update(describe)
@@ -1042,8 +1045,19 @@ def describe(request, database, table=None, column=None):
 
 
 def _get_snippet(user, notebook, snippet, operation_id):
-  if operation_id or not snippet:
+  # snippet is not complete so we are extracting it again for the editor call
+  snippet_has_guid = snippet.get('result') and snippet['result'].get('handle') and snippet['result']['handle'].get('guid')
+  if operation_id or not snippet or not snippet_has_guid:
     nb_doc = Document2.objects.get_by_uuid(user=user, uuid=operation_id or notebook.get('uuid'))
     notebook = Notebook(document=nb_doc).get_data()
     snippet = notebook['snippets'][0]
+
   return snippet
+
+
+def _get_notebook(user, notebook, operation_id):
+  if operation_id and not notebook:
+    nb_doc = Document2.objects.get_by_uuid(user=user, uuid=operation_id)
+    notebook = Notebook(document=nb_doc).get_data()
+
+  return notebook

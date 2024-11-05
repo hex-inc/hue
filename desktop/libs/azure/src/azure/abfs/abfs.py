@@ -18,42 +18,32 @@
 """
 Interfaces for ABFS
 """
-from future import standard_library
-standard_library.install_aliases()
-from builtins import object
-import logging
-import os
-import sys
-import threading
-import re
 
+import os
+import logging
+import threading
+import urllib.error
+import urllib.request
+from builtins import object
 from math import ceil
 from posixpath import join
-
-from hadoop.hdfs_site import get_umask_mode
-from hadoop.fs.exceptions import WebHdfsException
-
-from desktop.conf import RAZ
-from desktop.lib.rest import http_client, resource
-from desktop.lib.rest.raz_http_client import RazHttpClient
+from urllib.parse import quote as urllib_quote, urlparse as lib_urlparse
 
 import azure.abfs.__init__ as Init_ABFS
 from azure.abfs.abfsfile import ABFSFile
 from azure.abfs.abfsstats import ABFSStat
-from azure.conf import PERMISSION_ACTION_ABFS
+from azure.conf import PERMISSION_ACTION_ABFS, is_raz_abfs
+from desktop.conf import RAZ
+from desktop.lib.rest import http_client, resource
+from desktop.lib.rest.raz_http_client import RazHttpClient
+from hadoop.fs.exceptions import WebHdfsException
+from hadoop.hdfs_site import get_umask_mode
 
-if sys.version_info[0] > 2:
-  import urllib.request, urllib.error
-  from urllib.parse import quote as urllib_quote
-  from urllib.parse import urlparse as lib_urlparse
-else:
-  from urlparse import urlparse as lib_urlparse
-  from urllib import quote as urllib_quote
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 # Azure has a 30MB block limit on upload.
 UPLOAD_CHUCK_SIZE = 30 * 1000 * 1000
+
 
 class ABFSFileSystemException(IOError):
 
@@ -134,7 +124,7 @@ class ABFS(object):
 
   def _getheaders(self):
     headers = {
-      "x-ms-version": "2019-12-12" # For latest SAS support
+      "x-ms-version": "2019-12-12"  # For latest SAS support
     }
 
     if self._token_type and self._access_token:
@@ -190,7 +180,7 @@ class ABFS(object):
       return ABFSStat.for_root(path)
     try:
       file_system, dir_name = Init_ABFS.parse_uri(path)[:2]
-    except:
+    except Exception:
       raise IOError
 
     if dir_name == '':
@@ -219,13 +209,19 @@ class ABFS(object):
     if directory_name != "":
       params['directory'] = directory_name
 
-    res = self._root._invoke("GET", file_system, params, headers=self._getheaders(), **kwargs)
-    resp = self._root._format_response(res)
-
-    if account != '':
-      file_system = file_system + account
-    for x in resp['paths']:
-      dir_stats.append(ABFSStat.for_directory(res.headers, x, root + file_system + "/" + x['name']))
+    while True:
+      res = self._root._invoke("GET", file_system, params, headers=self._getheaders(), **kwargs)
+      resp = self._root._format_response(res)
+      if account:
+        file_system += account
+      for x in resp['paths']:
+        dir_stats.append(ABFSStat.for_directory(res.headers, x, root + file_system + "/" + x['name']))
+      # If the number of paths returned exceeds the 5000, a continuation token is provided in the response header x-ms-continuation,
+      # which must be used in subsequent invocations to continue listing the paths.
+      if 'x-ms-continuation' in res.headers:
+        params['continuation'] = res.headers['x-ms-continuation']
+      else:
+        break
 
     return dir_stats
 
@@ -266,7 +262,12 @@ class ABFS(object):
     """
     if params is None:
       params = {}
-    params['resource'] = 'filesystem'
+
+    # For RAZ ABFS, the root path stats should have 'getAccessControl' param.
+    if is_raz_abfs():
+      params['action'] = 'getAccessControl'
+    else:
+      params['resource'] = 'filesystem'
 
     res = self._root._invoke('HEAD', schemeless_path, params, headers=self._getheaders(), **kwargs)
 
@@ -283,7 +284,6 @@ class ABFS(object):
 
     return [x.name for x in listofDir]
 
-
   def listfilesystems(self, root=Init_ABFS.ABFS_ROOT, params=None, **kwargs):
     """
     Lists the names of the File Systems, limited arguements
@@ -296,7 +296,7 @@ class ABFS(object):
     """
     Attempts to go to the directory set by the user in the configuration file. If not defaults to abfs://
     """
-    return Init_ABFS.get_home_dir_for_abfs()
+    return Init_ABFS.get_abfs_home_directory()
 
   # Find or alter information about the URI path
   # --------------------------------
@@ -359,8 +359,19 @@ class ABFS(object):
     if data:
       self._writedata(path, data, len(data))
 
-  def create_home_dir(self, home_path=None):
-    LOG.info('Create home directory is not available for Azure filesystem')
+  def create_home_dir(self, home_path):
+    # When ABFS raz is enabled, try to create user home directory
+    if is_raz_abfs():
+      LOG.debug('Attempting to create user directory for path: %s' % home_path)
+      try:
+        if not self.exists(home_path):
+          self.mkdir(home_path)
+        else:
+          LOG.debug('Skipping user directory creation, the path already exists: %s' % home_path)
+      except Exception as e:
+        LOG.exception('Failed to create user home directory for path %s with error: %s' % (home_path, str(e)))
+    else:
+      LOG.info('Create home directory is not available for Azure filesystem')
 
   def _create_path(self, path, params=None, headers=None, overwrite=False):
     """
@@ -393,7 +404,7 @@ class ABFS(object):
     path = Init_ABFS.strip_scheme(path)
     headers = self._getheaders()
     if length != 0 and length != '0':
-      headers['range'] = 'bytes=%s-%s' % (str(offset), str(int(offset) + int(length)))
+      headers['range'] = 'bytes=%s-%s' % (str(offset), str(int(offset) + int(length) - 1))
 
     return self._root.get(path, headers=headers)
 
@@ -427,7 +438,7 @@ class ABFS(object):
       params['action'] = 'append'
     headers = {}
     if size == 0 or size == '0':
-      headers['Content-Length'] = str(len(data))
+      headers['Content-Length'] = str(len(data.getvalue()))
       if headers['Content-Length'] == '0':
         return
     else:
@@ -571,7 +582,8 @@ class ABFS(object):
     """
     Renames a file
     """
-    headers = {'x-ms-rename-source': '/' + urllib_quote(Init_ABFS.strip_scheme(old))}
+    rename_source = Init_ABFS.strip_scheme(old)
+    headers = {'x-ms-rename-source': '/' + urllib_quote(rename_source)}
 
     try:
       self._create_path(new, headers=headers, overwrite=True)
@@ -643,7 +655,7 @@ class ABFS(object):
             offset += size
             chunk = src.read(chunk_size)
           self.flush(remote_dst, params={'position': offset})
-        except:
+        except Exception:
           LOG.exception(_('Copying %s -> %s failed.') % (local_src, remote_dst))
           raise
       finally:
@@ -656,14 +668,6 @@ class ABFS(object):
     Check access of a file/directory (Work in Progress/Not Ready)
     """
     raise NotImplementedError("")
-    try:
-      status = self.stats(path)
-      if 'x-ms-permissions' not in status.keys():
-        raise b
-    except b:
-      LOG.debug("Permisions have not been set")
-    except:
-      Exception
 
   def mkswap(self, filename, subdir='', suffix='swp', basedir=None):
     """
@@ -692,9 +696,9 @@ class ABFS(object):
     return self._filebrowser_action
 
   # Other Methods to condense stuff
-  #----------------------------
+  # ----------------------------
   # Write Files on creation
-  #----------------------------
+  # ----------------------------
   def _writedata(self, path, data, size):
     """
     Adds text to a given file
@@ -707,11 +711,11 @@ class ABFS(object):
         length = chunk_size
       else:
         length = chunk
-      self._append(path, data[i*chunk_size:i*chunk_size + length], length)
+      self._append(path, data[i * chunk_size:i * chunk_size + length], length)
     self.flush(path, {'position': int(size)})
 
   # Use Patch HTTP request
-  #----------------------------
+  # ----------------------------
   def _patching_sl(self, schemeless_path, param, data=None, header=None, **kwargs):
     """
     A wraper function for patch

@@ -14,46 +14,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.import logging
 
-from future import standard_library
-standard_library.install_aliases()
-from builtins import object
 import csv
-import logging
-import sys
-import urllib.request, urllib.error
 import uuid
-
+import logging
+import urllib.error
+import urllib.request
+from builtins import object
 from collections import OrderedDict
+from urllib.parse import unquote as urllib_unquote, urlparse
 
 from django.urls import reverse
+from django.utils.translation import gettext as _
 
 from azure.abfs.__init__ import abfspath
+from desktop.lib import django_mako
+from desktop.lib.exceptions_renderable import PopupException
+from desktop.settings import BASE_DIR
 from hadoop.fs.hadoopfs import Hdfs
 from notebook.connectors.base import get_interpreter
 from notebook.models import make_notebook
 from useradmin.models import User
-from impala.conf import USER_SCRATCH_DIR_PERMISSION
 
-from desktop.lib import django_mako
-from desktop.lib.exceptions_renderable import PopupException
-from desktop.settings import BASE_DIR
-
-if sys.version_info[0] > 2:
-  from urllib.parse import urlparse, unquote as urllib_unquote
-  from django.utils.translation import gettext as _
-else:
-  from django.utils.translation import ugettext as _
-  from urllib import unquote as urllib_unquote
-  from urlparse import urlparse
-
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 
 try:
   from beeswax.server import dbms
 except ImportError as e:
   LOG.warning('Hive and HiveServer2 interfaces are not enabled')
+
+try:
+  from impala import conf as impala_conf
+except ImportError as e:
+  LOG.warning("Impala app is not enabled")
+  impala_conf = None
 
 
 class SQLIndexer(object):
@@ -78,10 +72,13 @@ class SQLIndexer(object):
     kudu_partition_columns = destination['kuduPartitionColumns']
     comment = destination['description']
 
-    source_path = urllib_unquote(source['path'])
+    source_path = source['path']
     load_data = destination['importData']
+    isIceberg = destination['isIceberg']
+    copyFile = destination['useCopy']
+
     external = not destination['useDefaultLocation']
-    external_path = urllib_unquote(destination['nonDefaultLocation'])
+    external_path = destination['nonDefaultLocation']
 
     editor_type = destination['sourceType']
     is_transactional = destination['isTransactional']
@@ -132,8 +129,8 @@ class SQLIndexer(object):
     "escapeChar"    = "\\\\"
     ''' % source['format']
 
-    use_temp_table = table_format in ('parquet', 'orc', 'kudu') or is_transactional
-    if use_temp_table: # We'll be using a temp table to load data
+    use_temp_table = table_format in ('parquet', 'orc', 'kudu', 'avro') or is_transactional or isIceberg
+    if use_temp_table:  # We'll be using a temp table to load data
       if load_data:
         table_name, final_table_name = 'hue__tmp_%s' % table_name, table_name
 
@@ -141,9 +138,9 @@ class SQLIndexer(object):
             'database': database,
             'table_name': table_name
         }
-      else: # Manual
+      else:  # Manual
         row_format = ''
-        file_format = table_format
+        file_format = 'TextFile' if table_format == 'text' else table_format
         skip_header = False
         if table_format == 'kudu':
           columns = [col for col in columns if col['name'] in primary_keys] + [col for col in columns if col['name'] not in primary_keys]
@@ -152,29 +149,35 @@ class SQLIndexer(object):
       collection_delimiter = None
       map_delimiter = None
 
-    if external or (load_data and table_format in ('parquet', 'orc', 'kudu')): # We'll use location to load data
-      if not self.fs.isdir(external_path): # File selected
+    if external or (load_data and table_format in ('parquet', 'orc', 'kudu', 'avro')):  # We'll use location to load data
+      if not self.fs.isdir(external_path):  # File selected
         external_path, external_file_name = Hdfs.split(external_path)
 
         if len(self.fs.listdir(external_path)) > 1:
           # If dir not just the file, create data dir and move file there. Make sure it's unique.
           external_path = external_path + '/%s%s_table' % (external_file_name, str(uuid.uuid4()))
           self.fs.mkdir(external_path)
-          self.fs.rename(source_path, external_path)
-    elif load_data: # We'll use load data command
+          if copyFile:
+            self.fs.copy(source_path, external_path)
+          else:
+            self.fs.rename(source_path, external_path)
+    elif load_data:  # We'll use load data command
       parent_path = self.fs.parent_path(source_path)
       stats = self.fs.stats(parent_path)
       split = urlparse(source_path)
       # Only for HDFS, import data and non-external table
       if split.scheme in ('', 'hdfs') and oct(stats["mode"])[-1] != '7':
-        user_scratch_dir = self.fs.get_home_dir() + '/.scratchdir/%s' % str(uuid.uuid4()) # Make sure it's unique.
+        # check if the csv file is in encryption zone (encBit), then the scratch dir will be
+        # in the same directory
+        base_dir = parent_path if stats.encBit else self.fs.get_home_dir()
+        user_scratch_dir = base_dir + '/.scratchdir/%s' % str(uuid.uuid4())  # Make sure it's unique.
         self.fs.do_as_user(self.user, self.fs.mkdir, user_scratch_dir, 0o0777)
         self.fs.do_as_user(self.user, self.fs.rename, source['path'], user_scratch_dir)
-        if USER_SCRATCH_DIR_PERMISSION.get():
+        if editor_type == 'impala' and impala_conf and impala_conf.USER_SCRATCH_DIR_PERMISSION.get():
           self.fs.do_as_user(self.user, self.fs.chmod, user_scratch_dir, 0o0777, True)
         source_path = user_scratch_dir + '/' + source['path'].split('/')[-1]
 
-    if external_path.lower().startswith("abfs"): #this is to check if its using an ABFS path
+    if external_path.lower().startswith("abfs"):  # this is to check if its using an ABFS path
       external_path = abfspath(external_path)
 
     tbl_properties = OrderedDict()
@@ -182,7 +185,7 @@ class SQLIndexer(object):
       tbl_properties['skip.header.line.count'] = '1'
     # The temp table is not transactional, but final table can be if is_transactional.
     # tbl_properties that don't exist in previous versions can safely be added without error.
-    tbl_properties['transactional'] = 'false'
+    tbl_properties['transactional'] = str(destination['isTransactional']).lower() if source['inputFormat'] == 'manual' else 'false'
 
     sql += django_mako.render_to_string("gen/create_table_statement.mako", {
         'table': {
@@ -195,7 +198,7 @@ class SQLIndexer(object):
             'serde_name': serde_name,
             'serde_properties': serde_properties,
             'file_format': file_format,
-            'external': external or load_data and table_format in ('parquet', 'orc', 'kudu'),
+            'external': external or load_data and table_format in ('parquet', 'orc', 'kudu', 'avro'),
             'path': external_path,
             'primary_keys': primary_keys if table_format == 'kudu' and not load_data else [],
             'tbl_properties': tbl_properties
@@ -220,7 +223,8 @@ class SQLIndexer(object):
         'overwrite': False,
         'partition_columns': [(partition['name'], partition['partitionValue']) for partition in partition_columns],
       }
-      query_server_config = dbms.get_query_server_config(name=source_type)
+      compute = destination['compute'] if 'compute' in destination else None
+      query_server_config = dbms.get_query_server_config(name=source_type, connector=compute)
       db = dbms.get(self.user, query_server=query_server_config)
       sql += "\n\n%s;" % db.load_data(database, table_name, form_data, None, generate_ddl_only=True)
 
@@ -243,12 +247,18 @@ class SQLIndexer(object):
         }
       else:
         columns_list = ['*']
-        extra_create_properties = 'STORED AS %(file_format)s' % {'file_format': file_format}
+        extra_create_properties = ''
+        if isIceberg:
+          if source_type == 'hive':
+            extra_create_properties = "STORED BY ICEBERG\n"
+          elif source_type == 'impala':
+            file_format = 'ICEBERG'
+        extra_create_properties += 'STORED AS %(file_format)s' % {'file_format': file_format}
         if is_transactional:
           extra_create_properties += "\nTBLPROPERTIES('transactional'='true', 'transactional_properties'='%s')" % \
               default_transactional_type
 
-      sql += '''\n\nCREATE TABLE `%(database)s`.`%(final_table_name)s`%(comment)s
+      sql += '''\n\nCREATE %(table_type)sTABLE `%(database)s`.`%(final_table_name)s`%(comment)s
         %(extra_create_properties)s
         AS SELECT %(columns_list)s
         FROM `%(database)s`.`%(table_name)s`;''' % {
@@ -257,7 +267,8 @@ class SQLIndexer(object):
           'table_name': table_name,
           'extra_create_properties': extra_create_properties,
           'columns_list': ', '.join(columns_list),
-          'comment': ' COMMENT "%s"' % comment if comment else ''
+          'comment': ' COMMENT "%s"' % comment if comment else '',
+          'table_type': 'EXTERNAL ' if external and not is_transactional else ''
       }
       sql += '\n\nDROP TABLE IF EXISTS `%(database)s`.`%(table_name)s`;\n' % {
           'database': database,
@@ -283,7 +294,9 @@ class SQLIndexer(object):
         database=database,
         on_success_url=on_success_url,
         last_executed=start_time,
-        is_task=True
+        is_task=True,
+        namespace=destination['namespace'] if 'namespace' in destination else None,
+        compute=destination['compute'] if 'compute' in destination else None
     )
 
   def nomalize_booleans(self, row, columns):
@@ -354,28 +367,33 @@ class SQLIndexer(object):
             row = self.nomalize_booleans(row, columns)
           _csv_rows.append(tuple(row))
 
-        if _csv_rows:
+        if _csv_rows:  # sql for data insertion
           csv_rows = str(_csv_rows)[1:-1]
 
           if dialect in ('hive', 'mysql'):
-            sql += '''\nINSERT INTO %(database)s.%(table_name)s VALUES %(csv_rows)s;\n'''% {
+            sql += '''\nINSERT INTO %(database)s.%(table_name)s VALUES %(csv_rows)s;\n''' % {
               'database': database,
               'table_name': table_name,
               'csv_rows': csv_rows
             }
           elif dialect == 'impala':
-             # casting from string to boolean is not allowed in impala so string -> int -> bool
-            sql_ = ',\n'.join([
-              '  CAST ( `%(name)s` AS %(type)s ) `%(name)s`' % col if col['type'] != 'boolean' \
-              else '  CAST ( CAST ( `%(name)s` AS TINYINT ) AS boolean ) `%(name)s`' % col for col in columns
-            ])
-
-            sql += '''\nINSERT INTO %(database)s.%(table_name)s_tmp VALUES %(csv_rows)s;\n
-CREATE TABLE IF NOT EXISTS %(database)s.%(table_name)s
-AS SELECT\n%(sql_)s\nFROM  %(database)s.%(table_name)s_tmp;\n\nDROP TABLE IF EXISTS %(database)s.%(table_name)s_tmp;'''% {
+            sql += '''\nINSERT INTO %(database)s.%(table_name)s_tmp VALUES %(csv_rows)s;\n''' % {
               'database': database,
               'table_name': table_name,
               'csv_rows': csv_rows,
+            }
+
+        if dialect == 'impala':
+          # casting from string to boolean is not allowed in impala so string -> int -> bool
+          sql_ = ',\n'.join([
+            '  CAST ( `%(name)s` AS %(type)s ) `%(name)s`' % col if col['type'] != 'boolean'
+            else '  CAST ( CAST ( `%(name)s` AS TINYINT ) AS boolean ) `%(name)s`' % col for col in columns
+          ])
+
+          sql += '''\nCREATE TABLE IF NOT EXISTS %(database)s.%(table_name)s
+AS SELECT\n%(sql_)s\nFROM  %(database)s.%(table_name)s_tmp;\n\nDROP TABLE IF EXISTS %(database)s.%(table_name)s_tmp;''' % {
+              'database': database,
+              'table_name': table_name,
               'sql_': sql_
             }
 
@@ -392,6 +410,7 @@ AS SELECT\n%(sql_)s\nFROM  %(database)s.%(table_name)s_tmp;\n\nDROP TABLE IF EXI
         last_executed=start_time,
         is_task=True
     )
+
 
 def _create_database(request, source, destination, start_time):
   database = destination['name']
@@ -436,6 +455,7 @@ def _create_table(request, source, destination, start_time=-1, file_encoding=Non
     return {'status': 0, 'commands': notebook.get_str()}
   else:
     return notebook.execute(request, batch=False)
+
 
 def _create_table_from_local(request, source, destination, start_time=-1):
   notebook = SQLIndexer(user=request.user, fs=request.fs).create_table_from_local_file(source, destination, start_time)

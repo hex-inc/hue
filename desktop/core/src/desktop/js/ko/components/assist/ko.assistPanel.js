@@ -27,6 +27,7 @@ import { GET_KNOWN_CONFIG_TOPIC } from 'config/events';
 import AssistInnerPanel from 'ko/components/assist/assistInnerPanel';
 import componentUtils from 'ko/components/componentUtils';
 import huePubSub from 'utils/huePubSub';
+import hueAnalytics from 'utils/hueAnalytics';
 import I18n from 'utils/i18n';
 import { withLocalStorage } from 'utils/storageUtils';
 
@@ -44,8 +45,8 @@ const TEMPLATE = `
     <!-- ko if: availablePanels().length > 1 -->
     <div class="assist-panel-switches">
       <!-- ko foreach: availablePanels -->
-      <div class="inactive-action assist-type-switch" data-bind="click: function () { $parent.visiblePanel($data); }, css: { 'blue': $parent.visiblePanel() === $data }, style: { 'float': rightAlignIcon ? 'right' : 'left' },  attr: { 'title': name }">
-        <!-- ko if: iconSvg --><span style="font-size:22px;"><svg class="hi"><use data-bind="attr: {'xlink:href': iconSvg }" xlink:href=''></use></svg></span><!-- /ko -->
+      <div class="inactive-action assist-type-switch" data-bind="click: function () { $parent.visiblePanel($data); }, css: { 'blue': $parent.visiblePanel() === $data }, style: { 'float': rightAlignIcon ? 'right' : 'left' },  attr: { 'title': name, 'data-testid': 'assist--' + type + '--button' }">
+        <!-- ko if: iconSvg --><span style="font-size:22px;"><svg class="hi"><use data-bind="attr: {'href': iconSvg }" href=''></use></svg></span><!-- /ko -->
         <!-- ko if: !iconSvg --><i class="fa fa-fw valign-middle" data-bind="css: icon"></i><!-- /ko -->
       </div>
       <!-- /ko -->
@@ -129,7 +130,9 @@ class AssistPanel {
               interpreter.type === 'adls' ||
               interpreter.type === 'hdfs' ||
               interpreter.type === 's3' ||
-              interpreter.type === 'abfs'
+              interpreter.type === 'gs' ||
+              interpreter.type === 'abfs' ||
+              interpreter.type === 'ofs'
           );
 
           if (storageBrowsers.length) {
@@ -283,6 +286,9 @@ class AssistPanel {
       });
 
       self.visiblePanel.subscribe(newValue => {
+        if (self.lastOpenPanelType() !== newValue?.type) {
+          hueAnalytics.log('left-assist-panel', 'panel-selection/' + newValue?.type);
+        }
         self.lastOpenPanelType(newValue.type);
       });
 

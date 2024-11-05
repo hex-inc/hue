@@ -17,7 +17,6 @@
 <%!
 import sys
 from desktop import conf
-from desktop.lib.i18n import smart_unicode
 from desktop.views import _ko
 
 if sys.version_info[0] > 2:
@@ -480,6 +479,7 @@ else:
       }
 
       KeyValueListInputViewModel.prototype.addValue = function () {
+        window.hueAnalytics.log('editor', 'settings/add-settings-value');
         var self = this;
         var newValue = {
           key: ko.observable(''),
@@ -610,6 +610,7 @@ else:
       }
 
       FunctionListInputViewModel.prototype.addValue = function () {
+        window.hueAnalytics.log('editor', 'settings/add-function');
         var self = this;
         var newValue = {
           name: ko.observable(''),
@@ -683,6 +684,7 @@ else:
       }
 
       HdfsFileListInputViewModel.prototype.addValue = function () {
+        window.hueAnalytics.log('editor', 'settings/add-file-path');
         var self = this;
         var newValue = {
           path: ko.observable(''),

@@ -123,7 +123,7 @@ var CoordinatorEditorViewModel = (function () {
           });
         }
       }).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", xhr.responseText);
+        huePubSub.publish('hue.global.error', {message: xhr.responseText});
       });
     }
 
@@ -246,7 +246,7 @@ var CoordinatorEditorViewModel = (function () {
     self.save = function (cb) {
       if (!self.isSaving()) {
         self.isSaving(true);
-        $(".jHueNotify").remove();
+        huePubSub.publish('hide.global.alerts');
         $.post("/oozie/editor/coordinator/save/", {
           "coordinator": ko.mapping.toJSON(self.coordinator, COORDINATOR_MAPPING)
         }, function (data) {
@@ -259,17 +259,17 @@ var CoordinatorEditorViewModel = (function () {
             if (typeof cb === 'function') {
               cb(data);
             } else {
-              $(document).trigger("info", data.message);
+              huePubSub.publish('hue.global.info', { message: data.message });
             }
             if (!cb) { // cb from integrated scheduler
               hueUtils.changeURL('/hue/oozie/editor/coordinator/edit/?coordinator=' + data.id);
             }
           }
           else {
-            $(document).trigger("error", data.message);
+            huePubSub.publish('hue.global.error', {message: data.message});
           }
         }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
         }).always(function () {
           self.isSaving(false);
         });
@@ -277,7 +277,7 @@ var CoordinatorEditorViewModel = (function () {
     };
 
     self.gen_xml = function () {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
       hueAnalytics.log('oozie/editor/coordinator', 'gen_xml');
 
       $.post("/oozie/editor/coordinator/gen_xml/", {
@@ -287,15 +287,15 @@ var CoordinatorEditorViewModel = (function () {
           console.log(data.xml);
         }
         else {
-          $(document).trigger("error", data.message);
+          huePubSub.publish('hue.global.error', {message: data.message});
         }
       }).fail(function (xhr, textStatus, errorThrown) {
-        $(document).trigger("error", xhr.responseText);
+        huePubSub.publish('hue.global.error', {message: xhr.responseText});
       });
     };
 
     self.showSubmitPopup = function () {
-      $(".jHueNotify").remove();
+      huePubSub.publish('hide.global.alerts');
 
       if (!self.coordinator.isDirty()) {
         hueAnalytics.log('oozie/editor/coordinator', 'submit');
@@ -304,7 +304,7 @@ var CoordinatorEditorViewModel = (function () {
         }, function (data) {
           $(document).trigger("showSubmitPopup", data);
         }).fail(function (xhr, textStatus, errorThrown) {
-          $(document).trigger("error", xhr.responseText);
+          huePubSub.publish('hue.global.error', {message: xhr.responseText});
         });
       }
     };

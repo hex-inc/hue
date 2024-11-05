@@ -14,59 +14,53 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-
-from builtins import str
-from builtins import object
-import itertools
-import logging
 import os
-import posixpath
 import re
-import sys
 import time
+import logging
+import itertools
+import posixpath
+import urllib.error
+import urllib.request
+from builtins import object, str
+from urllib.parse import urlparse as lib_urlparse
 
 from boto.exception import BotoClientError, S3ResponseError
 from boto.s3.connection import Location
 from boto.s3.key import Key
 from boto.s3.prefix import Prefix
+from django.http.multipartparser import MultiPartParser
+from django.utils.translation import gettext as _
 
 from aws import s3
-from aws.conf import get_default_region, get_locations, PERMISSION_ACTION_S3
-from aws.s3 import normpath, s3file, translate_s3_error, S3A_ROOT
+from aws.conf import AWS_ACCOUNTS, PERMISSION_ACTION_S3, get_default_region, get_locations, is_raz_s3
+from aws.s3 import S3A_ROOT, normpath, s3file, translate_s3_error
 from aws.s3.s3stat import S3Stat
-
 from filebrowser.conf import REMOTE_STORAGE_HOME
-
-if sys.version_info[0] > 2:
-  import urllib.request, urllib.error
-  from urllib.parse import quote as urllib_quote, urlparse as lib_urlparse
-  from django.utils.translation import gettext as _
-else:
-  from urllib import quote as urllib_quote
-  from urlparse import urlparse as lib_urlparse
-  from django.utils.translation import ugettext as _
 
 DEFAULT_READ_SIZE = 1024 * 1024  # 1MB
 BUCKET_NAME_PATTERN = re.compile(
-  "^((?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_\-]*[a-zA-Z0-9])\.)*(?:[A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9_\-]*[A-Za-z0-9]))$")
+  r"^((?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9_\-]*[a-zA-Z0-9])\.)*(?:[A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9_\-]*[A-Za-z0-9]))$")
 
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 
 class S3FileSystemException(IOError):
   def __init__(self, *args, **kwargs):
     super(S3FileSystemException, self).__init__(*args, **kwargs)
 
+
 class S3ListAllBucketsException(S3FileSystemException):
   def __init__(self, *args, **kwargs):
     super(S3FileSystemException, self).__init__(*args, **kwargs)
+
 
 def auth_error_handler(view_fn):
   def decorator(*args, **kwargs):
     try:
       return view_fn(*args, **kwargs)
     except (S3ResponseError, IOError) as e:
+      LOG.exception('S3 error: ' + str(e))
       if 'Forbidden' in str(e) or (hasattr(e, 'status') and e.status == 403):
         path = kwargs.get('path')
         if not path and len(args) > 1:
@@ -88,7 +82,21 @@ def auth_error_handler(view_fn):
 def get_s3_home_directory(user=None):
   from desktop.models import _handle_user_dir_raz
 
-  remote_home_s3 = REMOTE_STORAGE_HOME.get() if hasattr(REMOTE_STORAGE_HOME, 'get') and REMOTE_STORAGE_HOME.get() else 's3a://'
+  # REMOTE_STORAGE_HOME is deprecated in favor of DEFAULT_HOME_PATH per FS config level.
+  # But for backward compatibility, we are still giving preference to REMOTE_STORAGE_HOME path first and if it's not set,
+  # then check for DEFAULT_HOME_PATH which is set per FS config block. This helps in setting diff DEFAULT_HOME_PATH for diff FS in Hue.
+
+  if hasattr(REMOTE_STORAGE_HOME, 'get') and REMOTE_STORAGE_HOME.get() and REMOTE_STORAGE_HOME.get().startswith('s3a://'):
+    remote_home_s3 = REMOTE_STORAGE_HOME.get()
+  elif (
+    'default' in AWS_ACCOUNTS
+    and AWS_ACCOUNTS['default'].DEFAULT_HOME_PATH.get()
+    and AWS_ACCOUNTS['default'].DEFAULT_HOME_PATH.get().startswith('s3a://')
+  ):
+    remote_home_s3 = AWS_ACCOUNTS['default'].DEFAULT_HOME_PATH.get()
+  else:
+    remote_home_s3 = 's3a://'
+
   remote_home_s3 = _handle_user_dir_raz(user, remote_home_s3)
 
   return remote_home_s3
@@ -112,7 +120,7 @@ class S3FileSystem(object):
     except S3ResponseError as e:
       if e.status == 301 or e.status == 400:
         raise S3FileSystemException(
-          _('Failed to retrieve bucket "%s" in region "%s" with "%s". Your bucket is in region "%s"') % 
+          _('Failed to retrieve bucket "%s" in region "%s" with "%s". Your bucket is in region "%s"') %
           (name, self._get_location(), e.message or e.reason, self.get_bucket_location(name)))
       else:
         raise e
@@ -174,6 +182,7 @@ class S3FileSystem(object):
   def _get_key(self, path, validate=True):
     bucket_name, key_name = s3.parse_uri(path)[:2]
     bucket = self._get_bucket(bucket_name)
+
     try:
       return bucket.get_key(key_name, validate=validate)
     except BotoClientError as e:
@@ -194,7 +203,7 @@ class S3FileSystem(object):
       return Location.DEFAULT
 
   def _stats(self, path):
-    if s3.is_root(path):
+    if S3FileSystem.isroot(path):
       return S3Stat.for_s3_root()
 
     try:
@@ -208,7 +217,7 @@ class S3FileSystem(object):
         raise S3FileSystemException(_('User is not authorized to access path: "%s"') % path)
       else:
         raise S3FileSystemException(_('Failed to access path "%s": %s') % (path, e.reason))
-    except Exception as e: # SSL errors show up here, because they've been remapped in boto
+    except Exception as e:  # SSL errors show up here, because they've been remapped in boto
       raise S3FileSystemException(_('Failed to access path "%s": %s') % (path, str(e)))
     if key is None:
       key = self._get_key(path, validate=False)
@@ -255,7 +264,7 @@ class S3FileSystem(object):
   @staticmethod
   def parent_path(path):
     parent_dir = S3FileSystem._append_separator(path)
-    if not s3.is_root(parent_dir):
+    if not S3FileSystem.isroot(parent_dir):
       bucket_name, key_name, basename = s3.parse_uri(path)
       if not basename:  # bucket is top-level so return root
         parent_dir = S3A_ROOT
@@ -345,7 +354,7 @@ class S3FileSystem(object):
   @auth_error_handler
   def rmtree(self, path, skipTrash=True):
     if not skipTrash:
-      raise NotImplementedError(_('Moving to trash is not implemented for S3'))
+      raise NotImplementedError('Moving to trash is not implemented for S3')
 
     bucket_name, key_name = s3.parse_uri(path)[:2]
     if bucket_name and not key_name:
@@ -357,12 +366,11 @@ class S3FileSystem(object):
       key = self._get_key(path, validate=False)
 
       if key.exists():
-        to_delete = [key]
         dir_keys = []
 
         if self.isdir(path):
-          dir_keys = key.bucket.list(prefix=path)
-          to_delete = itertools.chain(dir_keys, to_delete)
+          _, dir_key_name = s3.parse_uri(path)[:2]
+          dir_keys = key.bucket.list(prefix=dir_key_name)
 
         if not dir_keys:
           # Avoid Raz bulk delete issue
@@ -370,14 +378,13 @@ class S3FileSystem(object):
           if deleted_key.exists():
             raise S3FileSystemException('Could not delete key %s' % deleted_key)
         else:
-          result = key.bucket.delete_keys(to_delete)
+          result = key.bucket.delete_keys(list(dir_keys))
           if result.errors:
             msg = "%d errors occurred while attempting to delete the following S3 paths:\n%s" % (
               len(result.errors), '\n'.join(['%s: %s' % (error.key, error.message) for error in result.errors])
             )
             LOG.error(msg)
             raise S3FileSystemException(msg)
-
 
   @translate_s3_error
   @auth_error_handler
@@ -391,7 +398,15 @@ class S3FileSystem(object):
     return self._filebrowser_action
 
   def create_home_dir(self, home_path):
-    LOG.info('Create home directory is not available for S3 filesystem')
+    # When S3 raz is enabled, try to create user home directory
+    if is_raz_s3():
+      LOG.debug('Attempting to create user directory for path: %s' % home_path)
+      try:
+        self.mkdir(home_path)
+      except Exception as e:
+        LOG.exception('Failed to create user home directory for path %s with error: %s' % (home_path, str(e)))
+    else:
+      LOG.info('Create home directory is not available for S3 filesystem')
 
   @translate_s3_error
   @auth_error_handler
@@ -443,12 +458,16 @@ class S3FileSystem(object):
   def _copy(self, src, dst, recursive, use_src_basename):
     src_st = self.stats(src)
     if src_st.isDir and not recursive:
-      return # omitting directory
+      return  # omitting directory
 
     dst = s3.abspath(src, dst)
     dst_st = self._stats(dst)
     if src_st.isDir and dst_st and not dst_st.isDir:
       raise S3FileSystemException("Cannot overwrite non-directory '%s' with directory '%s'" % (dst, src))
+
+    # Skip operation if destination path is same as source path
+    if self._check_key_parent_path(src, dst):
+      raise S3FileSystemException('Destination path is same as the source path, skipping the operation.')
 
     src_bucket, src_key = s3.parse_uri(src)[:2]
     dst_bucket, dst_key = s3.parse_uri(dst)[:2]
@@ -466,22 +485,46 @@ class S3FileSystem(object):
       if not src_key.endswith('/'):
         cut += 1
 
-    for key in src_bucket.list(prefix=src_key):
-      if not key.name.startswith(src_key):
-        raise S3FileSystemException(_("Invalid key to transform: %s") % key.name)
-      dst_name = posixpath.normpath(s3.join(dst_key, key.name[cut:]))
+    # handling files and directories distinctly. When dealing with files, extract the key and copy the file to the specified location.
+    # Regarding directories, when listing keys with the 'test1' prefix, it was including all directories or files starting with 'test1,'
+    # such as test1, test123, and test1234. Since we need the test1 directory only, we add '/' after the source key name,
+    # resulting in 'test1/'.
+    if src_st.isDir:
+      src_key = self._append_separator(src_key)
+      for key in src_bucket.list(prefix=src_key):
+        if not key.name.startswith(src_key):
+          raise S3FileSystemException(_("Invalid key to transform: %s") % key.name)
+        dst_name = posixpath.normpath(s3.join(dst_key, key.name[cut:]))
 
-      if self.isdir(normpath(self.join(S3A_ROOT, key.bucket.name, key.name))):
-        dst_name = self._append_separator(dst_name)
+        if self.isdir(normpath(self.join(S3A_ROOT, key.bucket.name, key.name))):
+          dst_name = self._append_separator(dst_name)
 
+        key.copy(dst_bucket, dst_name)
+    else:
+      key = self._get_key(src)
+      dst_name = posixpath.normpath(s3.join(dst_key, src_key[cut:]))
       key.copy(dst_bucket, dst_name)
 
   @translate_s3_error
   @auth_error_handler
   def rename(self, old, new):
     new = s3.abspath(old, new)
-    self.copy(old, new, recursive=True)
-    self.rmtree(old, skipTrash=True)
+
+    # Skip operation if destination path is same as source path
+    if not self._check_key_parent_path(old, new):
+      self.copy(old, new, recursive=True)
+      self.rmtree(old, skipTrash=True)
+    else:
+      raise S3FileSystemException('Destination path is same as source path, skipping the operation.')
+
+  @translate_s3_error
+  @auth_error_handler
+  def _check_key_parent_path(self, src, dst):
+    # Return True if parent path of source is same as destination path.
+    if S3FileSystem.parent_path(src) == dst:
+      return True
+    else:
+      return False
 
   @translate_s3_error
   @auth_error_handler
@@ -530,6 +573,8 @@ class S3FileSystem(object):
 
   @translate_s3_error
   def upload(self, file, path, *args, **kwargs):
+    # parser = MultiPartParser(META, post_data, self.upload_handlers, self.encoding)
+    # return parser.parse()
     pass  # upload is handled by S3FileUploadHandler
 
   @translate_s3_error
@@ -560,5 +605,5 @@ class S3FileSystem(object):
     self.user = user  # Only used in Cluster middleware request.fs
 
   def get_upload_chuck_size(self):
-    from hadoop.conf import UPLOAD_CHUNK_SIZE # circular dependency
+    from hadoop.conf import UPLOAD_CHUNK_SIZE  # circular dependency
     return UPLOAD_CHUNK_SIZE.get()

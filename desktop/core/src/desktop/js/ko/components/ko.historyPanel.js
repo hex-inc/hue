@@ -169,7 +169,7 @@ class HistoryPanel {
       self.historyPanelVisible(false);
     });
 
-    self.editorViewModel = new NotebookViewModel(null, '', {
+    self.editorViewModel = new NotebookViewModel({
       user: window.LOGGED_USERNAME,
       userId: window.LOGGED_USER_ID,
       languages: [
@@ -301,8 +301,7 @@ class HistoryPanel {
                 }
                 notebook.close(); // TODO: Don't close when onSuccessUrl is editor?
               } else {
-                // Perform last DROP statement execute
-                snippet.execute();
+                snippet.execute(true);
               }
             }
           });

@@ -15,19 +15,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
 import os
 import pwd
+import sys
+import logging
 
 from django.core import management
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from desktop.models import Directory, Document, Document2, Document2Permission, SAMPLE_USER_OWNERS
-from useradmin.models import get_default_user_group, install_sample_user, User
+from desktop.models import SAMPLE_USER_OWNERS, Directory, Document, Document2, Document2Permission
+from useradmin.models import User, get_default_user_group, install_sample_user
 
-
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger()
 
 
 class Command(BaseCommand):
@@ -46,7 +46,8 @@ class Command(BaseCommand):
       sample_user = install_sample_user()
 
       with transaction.atomic():
-        management.call_command('loaddata', 'initial_notebook_examples.json', verbosity=2, commit=False)
+        management.call_command('loaddata', 'initial_notebook_examples.json', verbosity=2)
+
         Document.objects.sync()
 
       # Get or create sample user directories
