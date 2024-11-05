@@ -204,7 +204,7 @@ describe('genericAutocompleteParser.js locations', () => {
           identifierChain: [{ name: 'testTable1' }]
         },
         {
-          type: 'database',
+          type: 'schema',
           location: { first_line: 1, last_line: 1, first_column: 31, last_column: 34 },
           identifierChain: [{ name: 'db1' }]
         },
@@ -253,7 +253,7 @@ describe('genericAutocompleteParser.js locations', () => {
           qualified: true
         },
         {
-          type: 'database',
+          type: 'schema',
           location: { first_line: 1, last_line: 1, first_column: 19, last_column: 21 },
           identifierChain: [{ name: 'db' }]
         },
@@ -311,7 +311,7 @@ describe('genericAutocompleteParser.js locations', () => {
           qualified: true
         },
         {
-          type: 'database',
+          type: 'schema',
           location: { first_line: 1, last_line: 1, first_column: 21, last_column: 23 },
           identifierChain: [{ name: 'db' }]
         },
@@ -606,7 +606,7 @@ describe('genericAutocompleteParser.js locations', () => {
           identifierChain: [{ name: 'testTable1' }]
         },
         {
-          type: 'database',
+          type: 'schema',
           location: { first_line: 1, last_line: 1, first_column: 35, last_column: 37 },
           identifierChain: [{ name: 'db' }]
         },
@@ -1139,7 +1139,7 @@ describe('genericAutocompleteParser.js locations', () => {
             qualified: true
           },
           {
-            type: 'database',
+            type: 'schema',
             location: { first_line: 6, last_line: 6, first_column: 8, last_column: 11 },
             identifierChain: [{ name: 'db1' }]
           },

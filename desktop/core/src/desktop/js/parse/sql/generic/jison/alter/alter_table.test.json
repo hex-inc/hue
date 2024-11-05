@@ -19,6 +19,9 @@
       "suggestTables": {
         "onlyTables": true
       },
+      "suggestSchemas": {
+        "appendDot": true
+      },
       "suggestDatabases": {
         "appendDot": true
       }
@@ -37,6 +40,10 @@
           }
         ],
         "onlyTables": true
+      },
+      "suggestSchemas": {
+        "appendDot": true,
+        "databaseName": "foo"
       }
     }
   }

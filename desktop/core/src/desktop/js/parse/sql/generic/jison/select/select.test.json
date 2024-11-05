@@ -118,6 +118,10 @@
       "suggestTables": {
         "prependFrom": true
       },
+      "suggestSchemas": {
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependFrom": true,
         "appendDot": true
@@ -135,6 +139,10 @@
       "lowerCase": false,
       "suggestTables": {
         "prependFrom": true
+      },
+      "suggestSchemas": {
+        "prependFrom": true,
+        "appendDot": true
       },
       "suggestDatabases": {
         "prependFrom": true,
@@ -165,6 +173,10 @@
       "suggestTables": {
         "prependFrom": true
       },
+      "suggestSchemas": {
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependFrom": true,
         "appendDot": true
@@ -183,6 +195,10 @@
       "lowerCase": false,
       "suggestTables": {
         "prependFrom": true
+      },
+      "suggestSchemas": {
+        "prependFrom": true,
+        "appendDot": true
       },
       "suggestDatabases": {
         "prependFrom": true,
@@ -298,6 +314,10 @@
       "lowerCase": false,
       "suggestTables": {
         "prependFrom": true
+      },
+      "suggestSchemas": {
+        "prependFrom": true,
+        "appendDot": true
       },
       "suggestDatabases": {
         "prependFrom": true,
@@ -895,6 +915,11 @@
       },
       "suggestAnalyticFunctions": true,
       "suggestFunctions": {},
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependQuestionMark": true,
         "prependFrom": true,
@@ -922,6 +947,11 @@
       },
       "suggestAnalyticFunctions": true,
       "suggestFunctions": {},
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependQuestionMark": true,
         "prependFrom": true,
@@ -949,6 +979,11 @@
       },
       "suggestAnalyticFunctions": true,
       "suggestFunctions": {},
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependQuestionMark": true,
         "prependFrom": true,
@@ -976,6 +1011,11 @@
       },
       "suggestAnalyticFunctions": true,
       "suggestFunctions": {},
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependQuestionMark": true,
         "prependFrom": true,
@@ -1003,6 +1043,11 @@
       },
       "suggestAnalyticFunctions": true,
       "suggestFunctions": {},
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependQuestionMark": true,
         "prependFrom": true,
@@ -1029,6 +1074,11 @@
       "suggestTables": {
         "prependQuestionMark": true,
         "prependFrom": true
+      },
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
       },
       "suggestDatabases": {
         "prependQuestionMark": true,
@@ -1060,6 +1110,11 @@
         "prependQuestionMark": true,
         "prependFrom": true
       },
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependQuestionMark": true,
         "prependFrom": true,
@@ -1084,6 +1139,11 @@
       "suggestTables": {
         "prependQuestionMark": true,
         "prependFrom": true
+      },
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
       },
       "suggestDatabases": {
         "prependQuestionMark": true,
@@ -1842,7 +1902,7 @@
           }
         },
         {
-          "type": "database",
+          "type": "schema",
           "location": {
             "first_line": 1,
             "last_line": 1,
@@ -2555,6 +2615,11 @@
         "prependQuestionMark": true,
         "prependFrom": true
       },
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependQuestionMark": true,
         "prependFrom": true,
@@ -2606,6 +2671,10 @@
       "lowerCase": false,
       "suggestTables": {
         "prependFrom": true
+      },
+      "suggestSchemas": {
+        "prependFrom": true,
+        "appendDot": true
       },
       "suggestDatabases": {
         "prependFrom": true,
@@ -2960,6 +3029,10 @@
       "lowerCase": false,
       "suggestTables": {
         "prependFrom": true
+      },
+      "suggestSchemas": {
+        "prependFrom": true,
+        "appendDot": true
       },
       "suggestDatabases": {
         "prependFrom": true,
@@ -8089,6 +8162,11 @@
         "prependQuestionMark": true,
         "prependFrom": true
       },
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependQuestionMark": true,
         "prependFrom": true,
@@ -8115,6 +8193,11 @@
       "suggestTables": {
         "prependQuestionMark": true,
         "prependFrom": true
+      },
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
       },
       "suggestDatabases": {
         "prependQuestionMark": true,
@@ -8175,6 +8258,11 @@
       "suggestTables": {
         "prependQuestionMark": true,
         "prependFrom": true
+      },
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
       },
       "suggestDatabases": {
         "prependQuestionMark": true,
@@ -8954,6 +9042,11 @@
       "suggestTables": {
         "prependQuestionMark": true,
         "prependFrom": true
+      },
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
       },
       "suggestDatabases": {
         "prependQuestionMark": true,

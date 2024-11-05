@@ -44,6 +44,7 @@ UpdateStatement_EDIT
  | 'UPDATE' 'CURSOR'
    {
      parser.suggestTables();
+     parser.suggestSchemas({ appendDot: true });
      parser.suggestDatabases({ appendDot: true });
    }
  ;
@@ -116,6 +117,7 @@ FromJoinedTable_EDIT
  : 'FROM' 'CURSOR'
    {
      parser.suggestTables();
+     parser.suggestSchemas({ appendDot: true });
      parser.suggestDatabases({ appendDot: true });
    }
  | 'FROM' TableReference_EDIT

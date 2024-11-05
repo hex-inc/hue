@@ -65,6 +65,11 @@
         "prependQuestionMark": true,
         "prependFrom": true
       },
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependQuestionMark": true,
         "prependFrom": true,
@@ -116,6 +121,11 @@
         "prependQuestionMark": true,
         "prependFrom": true
       },
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependQuestionMark": true,
         "prependFrom": true,
@@ -157,6 +167,9 @@
     "expectedResult": {
       "lowerCase": false,
       "suggestTables": {},
+      "suggestSchemas": {
+        "appendDot": true
+      },
       "suggestDatabases": {
         "appendDot": true
       },
@@ -192,6 +205,9 @@
     "expectedResult": {
       "lowerCase": true,
       "suggestTables": {},
+      "suggestSchemas": {
+        "appendDot": true
+      },
       "suggestDatabases": {
         "appendDot": true
       },
@@ -234,6 +250,9 @@
     "expectedResult": {
       "lowerCase": true,
       "suggestTables": {},
+      "suggestSchemas": {
+        "appendDot": true
+      },
       "suggestDatabases": {
         "appendDot": true
       },

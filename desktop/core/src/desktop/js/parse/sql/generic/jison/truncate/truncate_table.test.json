@@ -29,6 +29,9 @@
     "expectedResult": {
       "lowerCase": false,
       "suggestTables": {},
+      "suggestSchemas": {
+        "appendDot": true
+      },
       "suggestDatabases": {
         "appendDot": true
       },

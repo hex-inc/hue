@@ -60,6 +60,9 @@
         ]
       },
       "suggestTables": {},
+      "suggestSchemas": {
+        "appendDot": true
+      },
       "suggestDatabases": {
         "appendDot": true
       }
@@ -92,6 +95,9 @@
         ]
       },
       "suggestTables": {},
+      "suggestSchemas": {
+        "appendDot": true
+      },
       "suggestDatabases": {
         "appendDot": true
       }
@@ -189,6 +195,10 @@
             "name": "db1"
           }
         ]
+      },
+      "suggestSchemas": {
+        "appendDot": true,
+        "databaseName": "db1"
       }
     }
   },
@@ -204,6 +214,10 @@
             "name": "db1"
           }
         ]
+      },
+      "suggestSchemas": {
+        "appendDot": true,
+        "databaseName": "db1"
       }
     }
   },

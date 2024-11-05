@@ -43,6 +43,9 @@
     "expectedResult": {
       "lowerCase": false,
       "suggestTables": {},
+      "suggestSchemas": {
+        "appendDot": true
+      },
       "suggestDatabases": {
         "appendDot": true
       },
@@ -64,6 +67,10 @@
             "name": "baa"
           }
         ]
+      },
+      "suggestSchemas": {
+        "appendDot": true,
+        "databaseName": "baa"
       }
     }
   },
@@ -80,6 +87,10 @@
             "name": "baa"
           }
         ]
+      },
+      "suggestSchemas": {
+        "appendDot": true,
+        "databaseName": "baa"
       }
     }
   },

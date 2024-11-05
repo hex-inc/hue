@@ -58,6 +58,7 @@ AlterViewLeftSide_EDIT
  | 'ALTER' 'VIEW' 'CURSOR'
    {
      parser.suggestTables({ onlyViews: true });
+     parser.suggestSchemas({ appendDot: true });
      parser.suggestDatabases({ appendDot: true });
    }
  ;

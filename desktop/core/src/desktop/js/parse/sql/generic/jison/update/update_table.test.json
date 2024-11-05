@@ -197,6 +197,9 @@
     "expectedResult": {
       "lowerCase": false,
       "suggestTables": {},
+      "suggestSchemas": {
+        "appendDot": true
+      },
       "suggestDatabases": {
         "appendDot": true
       }
@@ -209,6 +212,9 @@
     "expectedResult": {
       "lowerCase": false,
       "suggestTables": {},
+      "suggestSchemas": {
+        "appendDot": true
+      },
       "suggestDatabases": {
         "appendDot": true
       }
@@ -275,7 +281,7 @@
           }
         },
         {
-          "type": "database",
+          "type": "schema",
           "location": {
             "first_line": 1,
             "last_line": 1,
@@ -339,7 +345,7 @@
           }
         },
         {
-          "type": "database",
+          "type": "schema",
           "location": {
             "first_line": 1,
             "last_line": 1,
@@ -476,7 +482,7 @@
           }
         },
         {
-          "type": "database",
+          "type": "schema",
           "location": {
             "first_line": 1,
             "last_line": 1,
@@ -555,7 +561,7 @@
           }
         },
         {
-          "type": "database",
+          "type": "schema",
           "location": {
             "first_line": 1,
             "last_line": 1,
@@ -728,7 +734,7 @@
           }
         },
         {
-          "type": "database",
+          "type": "schema",
           "location": {
             "first_line": 1,
             "last_line": 1,

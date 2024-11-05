@@ -81,6 +81,11 @@
         "prependQuestionMark": true,
         "prependFrom": true
       },
+      "suggestSchemas": {
+        "prependQuestionMark": true,
+        "prependFrom": true,
+        "appendDot": true
+      },
       "suggestDatabases": {
         "prependQuestionMark": true,
         "prependFrom": true,

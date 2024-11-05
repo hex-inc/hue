@@ -78,6 +78,10 @@
           }
         ],
         "onlyViews": true
+      },
+      "suggestSchemas": {
+        "appendDot": true,
+        "databaseName": "boo"
       }
     }
   },
@@ -94,6 +98,10 @@
           }
         ],
         "onlyViews": true
+      },
+      "suggestSchemas": {
+        "appendDot": true,
+        "databaseName": "foo"
       }
     }
   },

@@ -578,6 +578,7 @@ const initSqlParser = function (parser) {
       parser.yy.result.suggestIdentifiers.length > 0
     ) {
       delete parser.yy.result.suggestTables;
+      delete parser.yy.result.suggestSchemas;
       delete parser.yy.result.suggestDatabases;
     }
     if (typeof parser.yy.result.suggestColumns !== 'undefined') {
@@ -587,6 +588,7 @@ const initSqlParser = function (parser) {
         delete parser.yy.result.subQueries;
       } else {
         delete parser.yy.result.suggestTables;
+        delete parser.yy.result.suggestSchemas;
         delete parser.yy.result.suggestDatabases;
 
         suggestColumns.tables.forEach(table => {
@@ -1105,18 +1107,20 @@ const initSqlParser = function (parser) {
     parser.yy.result.suggestColRefKeywords = colRefKeywords;
   };
 
-  parser.suggestTablesOrColumns = function (identifier) {
+  parser.suggestTablesOrColumns = function (identifierChain) {
     if (typeof parser.yy.latestTablePrimaries == 'undefined') {
-      parser.suggestTables({ identifierChain: [{ name: identifier }] });
+      parser.suggestTables({ identifierChain });
       return;
     }
+    const lastIdentifierName =
+      identifierChain.length > 0 ? identifierChain[identifierChain.length - 1].name : undefined;
     const tableRef = parser.yy.latestTablePrimaries.filter(tablePrimary => {
-      return equalIgnoreCase(tablePrimary.alias, identifier);
+      return equalIgnoreCase(tablePrimary.alias, lastIdentifierName);
     });
     if (tableRef.length > 0) {
-      parser.suggestColumns({ identifierChain: [{ name: identifier }] });
+      parser.suggestColumns({ identifierChain });
     } else {
-      parser.suggestTables({ identifierChain: [{ name: identifier }] });
+      parser.suggestTables({ identifierChain });
     }
   };
 
@@ -1230,6 +1234,10 @@ const initSqlParser = function (parser) {
         addColRefToVariableLocation(right.columnReference[0].name, left.columnReference);
       }
     }
+  };
+
+  parser.suggestSchemas = function (details) {
+    parser.yy.result.suggestSchemas = details || {};
   };
 
   parser.suggestDatabases = function (details) {

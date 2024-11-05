@@ -58,6 +58,9 @@ SelectStatement_EDIT
      if ($3.suggestTables) {
        parser.suggestTables({ prependQuestionMark: true, prependFrom: true });
      }
+     if ($3.suggestSchemas) {
+       parser.suggestSchemas({ prependQuestionMark: true, prependFrom: true, appendDot: true });
+     }
      if ($3.suggestDatabases) {
        parser.suggestDatabases({ prependQuestionMark: true, prependFrom: true, appendDot: true });
      }
@@ -81,6 +84,7 @@ SelectStatement_EDIT
      parser.suggestFunctions();
      parser.suggestColumns({ identifierChain: [], source: 'select' });
      parser.suggestTables({ prependQuestionMark: true, prependFrom: true });
+     parser.suggestSchemas({ prependQuestionMark: true, prependFrom: true, appendDot: true });
      parser.suggestDatabases({ prependQuestionMark: true, prependFrom: true, appendDot: true });
    }
  | 'SELECT' OptionalAllOrDistinct SelectList TableExpression_EDIT
@@ -110,6 +114,7 @@ SelectStatement_EDIT
      parser.suggestFunctions();
      parser.suggestColumns({ identifierChain: [], source: 'select' });
      parser.suggestTables({ prependQuestionMark: true, prependFrom: true });
+     parser.suggestSchemas({ prependQuestionMark: true, prependFrom: true, appendDot: true });
      parser.suggestDatabases({ prependQuestionMark: true, prependFrom: true, appendDot: true });
    }
  | 'SELECT' OptionalAllOrDistinct SelectList 'CURSOR' TableExpression
@@ -132,6 +137,7 @@ SelectStatement_EDIT
      }
      parser.suggestKeywords(keywords);
      parser.suggestTables({ prependFrom: true });
+     parser.suggestSchemas({ prependFrom: true, appendDot: true });
      parser.suggestDatabases({ prependFrom: true, appendDot: true });
    }
  ;
@@ -296,7 +302,7 @@ SelectList_EDIT
    }
  | SelectList ',' AnyCursor
    {
-     $$ = { suggestKeywords: parser.getSelectListKeywords(), suggestTables: true, suggestDatabases: true, suggestFunctions: true, suggestColumns: true, suggestAggregateFunctions: true };
+     $$ = { suggestKeywords: parser.getSelectListKeywords(), suggestTables: true, suggestSchemas: true, suggestDatabases: true, suggestFunctions: true, suggestColumns: true, suggestAggregateFunctions: true };
    }
  | SelectList ',' SelectSpecification_EDIT                 -> $3
  | SelectList ',' AnyCursor SelectList
