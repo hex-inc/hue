@@ -3928,6 +3928,30 @@
     }
   },
   {
+    "namePrefix": "should suggest keywords",
+    "beforeCursor": "select bla::",
+    "afterCursor": "",
+    "containsKeywords": [
+      "INT",
+      "STRING"
+    ],
+    "expectedResult": {
+      "lowerCase": true
+    }
+  },
+  {
+    "namePrefix": "should suggest keywords",
+    "beforeCursor": "SELECT bla::ST",
+    "afterCursor": " FROM bar;",
+    "containsKeywords": [
+      "INT",
+      "STRING"
+    ],
+    "expectedResult": {
+      "lowerCase": false
+    }
+  },
+  {
     "namePrefix": "should not report errors for",
     "beforeCursor": "SELECT db.customUdf(col) FROM bar;",
     "afterCursor": "",

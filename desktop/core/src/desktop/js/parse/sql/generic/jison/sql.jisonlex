@@ -182,6 +182,8 @@ ROW_NUMBER\s*\(                            { yy.lexer.unput('('); yytext = 'row_
 '~'                                        { return '~'; }
 '!'                                        { return '!'; }
 
+'::'                                       { return '::'; }
+
 '('                                        { return '('; }
 ')'                                        { return ')'; }
 '['                                        { return '['; }

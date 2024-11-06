@@ -25,7 +25,12 @@ describe('genericAutocompleteParser.js locations', () => {
   });
 
   const assertAutoComplete = testDefinition => {
-    const debug = false;
+    const debug = true;
+    console.warn(genericAutocompleteParser.parseSql(
+      testDefinition.beforeCursor,
+      testDefinition.afterCursor,
+      debug
+    ));
     expect(
       genericAutocompleteParser.parseSql(
         testDefinition.beforeCursor,
@@ -45,6 +50,13 @@ describe('genericAutocompleteParser.js locations', () => {
       expectedDefinitions: options.expectedDefinitions
     });
   };
+
+  it.only('testing', () => {
+    assertLocations({
+      beforeCursor: 'select boo::INT, bar::INT; ',
+      expectedLocations: []
+    });
+  });
 
   it('should report locations for "select cos(1) as foo from customers order by foo;"', () => {
     assertLocations({
