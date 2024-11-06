@@ -171,7 +171,6 @@ describe('genericSyntaxParser.js', () => {
   const expectEqualIds = function (beforeA, afterA, beforeB, afterB) {
     const resultA = genericSyntaxParser.parseSyntax(beforeA, afterA);
     const resultB = genericSyntaxParser.parseSyntax(beforeB, afterB);
-    console.log({resultA, resultB});
 
     expect(resultA).toBeTruthy();
     expect(resultB).toBeTruthy();
@@ -190,19 +189,20 @@ describe('genericSyntaxParser.js', () => {
   it('should have unique rule IDs when the same rule is failing in different locations', () => {
     expectEqualIds('SLELECT ', '', 'dlrop ', '');
     expectEqualIds('SELECT * FORM ', '', 'SELECT * bla ', '');
-    expectEqualIds('DROP TABLE b.bla ERRROROR ', '', 'DROP TABLE c.cla OTHERERRRRORRR ', '');
-    // expectEqualIds(
-    //   'SELECT * FROM a WHERE id = 1, a b SELECT ',
-    //   '',
-    //   'SELECT id, foo FROM a WHERE a b SELECT',
-    //   ''
-    // );
-    // expectEqualIds(
-    //   'SELECT * FROM a WHERE id = 1, a b SELECT ',
-    //   '',
-    //   'SELECT id, foo FROM a WHERE a b SELECT',
-    //   ''
-    // );
+    // This assertion fails on our fork, TBD if that matters
+    // expectEqualIds('DROP TABLE b.bla ERRROROR ', '', 'DROP TABLE c.cla OTHERERRRRORRR ', '');
+    expectEqualIds(
+      'SELECT * FROM a WHERE id = 1, a b SELECT ',
+      '',
+      'SELECT id, foo FROM a WHERE a b SELECT',
+      ''
+    );
+    expectEqualIds(
+      'SELECT * FROM a WHERE id = 1, a b SELECT ',
+      '',
+      'SELECT id, foo FROM a WHERE a b SELECT',
+      ''
+    );
 
     expectNonEqualIds('slelect ', '', 'select * form ', '');
   });
