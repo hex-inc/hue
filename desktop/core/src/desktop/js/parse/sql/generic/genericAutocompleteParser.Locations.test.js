@@ -46,8 +46,7 @@ describe('genericAutocompleteParser.js locations', () => {
     });
   };
 
-  // eslint-disable-next-line jest/no-focused-tests
-  it.only('testing', () => {
+  it.skip('testing', () => {
     assertLocations({
       beforeCursor: 'select boo::INT, bar::int from customers; ',
       expectedLocations: []

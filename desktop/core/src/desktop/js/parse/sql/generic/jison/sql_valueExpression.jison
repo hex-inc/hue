@@ -928,6 +928,11 @@ CastExpr
     parser.extractExpressionText($$, $1, $2, $3);
     $$ = { types: [ $3.toUpperCase() ] }
   }
+ | '(' ValueExpression ')' '::' PrimitiveType
+  {
+    parser.extractExpressionText($$, $1, $2, $3, $4, $5);
+    $$ = { types: [ $5.toUpperCase() ] }
+  }
  | CastExpr '::' PrimitiveType
   {
     parser.extractExpressionText($$, $1, $2, $3);
