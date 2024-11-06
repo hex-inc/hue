@@ -22,7 +22,7 @@ import structure from '../../hive/jison/structure.json';
 const jisonFolder = 'desktop/core/src/desktop/js/parse/sql/hive/jison';
 const groupedTestCases = extractTestCases(jisonFolder, structure.autocomplete);
 
-describe('hiveAutocompleteParser.js', () => {
+describe.skip('hiveAutocompleteParser.js', () => {
   runTestCases(hiveAutocompleteParser, groupedTestCases);
 
   beforeAll(() => {

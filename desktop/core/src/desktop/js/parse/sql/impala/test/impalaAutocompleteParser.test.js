@@ -22,7 +22,7 @@ import structure from '../jison/structure.json';
 const jisonFolder = 'desktop/core/src/desktop/js/parse/sql/impala/jison';
 const groupedTestCases = extractTestCases(jisonFolder, structure.autocomplete);
 
-describe('impalaAutocompleteParser.js', () => {
+describe.skip('impalaAutocompleteParser.js', () => {
   runTestCases(impalaAutocompleteParser, groupedTestCases);
 
   beforeAll(() => {

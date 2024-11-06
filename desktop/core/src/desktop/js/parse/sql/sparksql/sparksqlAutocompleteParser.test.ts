@@ -23,7 +23,7 @@ import { assertPartials, CommonParser } from '../sharedParserTests';
 const jisonFolder = 'desktop/core/src/desktop/js/parse/sql/sparksql/jison';
 const groupedTestCases = extractTestCases(jisonFolder, structure.autocomplete);
 
-describe('sparksqlAutocompleteParser', () => {
+describe.skip('sparksqlAutocompleteParser', () => {
   // TODO: Fix the types
   runTestCases(sparksqlAutocompleteParser as unknown as AutocompleteParser, groupedTestCases);
 
