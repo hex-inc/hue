@@ -3950,6 +3950,17 @@
     "expectedResult": {
       "lowerCase": false
     }
+  },  {
+    "namePrefix": "should suggest keywords",
+    "beforeCursor": "SELECT (5 + 5)::",
+    "afterCursor": " FROM bar;",
+    "containsKeywords": [
+      "INT",
+      "STRING"
+    ],
+    "expectedResult": {
+      "lowerCase": false
+    }
   },
   {
     "namePrefix": "should not report errors for",

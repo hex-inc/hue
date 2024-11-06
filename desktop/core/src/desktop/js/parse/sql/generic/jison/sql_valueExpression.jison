@@ -925,14 +925,8 @@ CaseWhenThenListPartTwo_EDIT
 CastExpr
  : NonParenthesizedValueExpressionPrimary '::' PrimitiveType
   {
-    parser.addColRefIfExists($1);
     parser.extractExpressionText($$, $1, $2, $3);
     $$ = { types: [ $3.toUpperCase() ] }
-  }
- | '(' ValueExpression ')' '::' PrimitiveType
-  {
-    parser.extractExpressionText($$, $1, $2, $3, $4, $5);
-    $$ = { types: [ $5.toUpperCase() ] }
   }
  | CastExpr '::' PrimitiveType
   {
@@ -941,8 +935,20 @@ CastExpr
   }
  ;
 
+CastExpr_EDIT
+ : NonParenthesizedValueExpressionPrimary '::' AnyCursor
+  {
+    parser.suggestKeywords(parser.getTypeKeywords());
+    $$ = { types: [ 'T' ] };
+  }
+ ;
+
 ValueExpression
  : CastExpr
+ ;
+
+ValueExpression_EDIT
+ : CastExpr_EDIT
  ;
 
 // ValueExpression

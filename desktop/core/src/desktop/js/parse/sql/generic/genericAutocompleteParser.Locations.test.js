@@ -25,12 +25,7 @@ describe('genericAutocompleteParser.js locations', () => {
   });
 
   const assertAutoComplete = testDefinition => {
-    const debug = true;
-    console.warn(genericAutocompleteParser.parseSql(
-      testDefinition.beforeCursor,
-      testDefinition.afterCursor,
-      debug
-    ));
+    const debug = false;
     expect(
       genericAutocompleteParser.parseSql(
         testDefinition.beforeCursor,
@@ -51,9 +46,10 @@ describe('genericAutocompleteParser.js locations', () => {
     });
   };
 
+  // eslint-disable-next-line jest/no-focused-tests
   it.only('testing', () => {
     assertLocations({
-      beforeCursor: 'select boo::INT, bar::INT; ',
+      beforeCursor: 'select boo::INT, bar::int from customers; ',
       expectedLocations: []
     });
   });

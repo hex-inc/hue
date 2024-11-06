@@ -215,9 +215,7 @@ const initSqlParser = function (parser) {
   };
 
   parser.addColRefIfExists = function (valueExpression) {
-    console.log("YOO", valueExpression);
     if (valueExpression.columnReference) {
-      console.log("nice", valueExpression);
       parser.yy.result.colRef = { identifierChain: valueExpression.columnReference };
     }
   };
