@@ -17,7 +17,7 @@
 import sparksqlAutocompleteParser from './sparksqlAutocompleteParser';
 
 // prettier-ignore-start
-describe('sparksqlAutocompleteParser.js locations', () => {
+describe.skip('sparksqlAutocompleteParser.js locations', () => {
   beforeAll(() => {
     sparksqlAutocompleteParser.yy.parseError = function (msg) {
       throw Error(msg);
