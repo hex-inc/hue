@@ -922,6 +922,11 @@ CaseWhenThenListPartTwo_EDIT
 
 // ------------------  :: CASTS  --------------------
 
+PrimitiveTypeOrError
+ : PrimitiveType
+ | error
+ ;
+
 ValueExpression
  : ValueExpression '::' PrimitiveType
   {
@@ -936,7 +941,7 @@ ValueExpression_EDIT
     parser.suggestKeywords(parser.getTypeKeywords());
     $$ = { types: [ 'T' ] };
   }
- | ValueExpression_EDIT '::' PrimitiveType
+ | ValueExpression_EDIT '::' PrimitiveTypeOrError
   {
     parser.addColRefIfExists($1);
     $$ = { types: [ $3.toUpperCase() ] }

@@ -46,9 +46,9 @@ describe('genericAutocompleteParser.js locations', () => {
     });
   };
 
-  it.skip('testing', () => {
+  it.skip('useful for testing', () => {
     assertLocations({
-      beforeCursor: 'select boo::INT, bar::int from customers; ',
+      beforeCursor: 'select * from a join b on a.a = b.b::date order by ',
       expectedLocations: []
     });
   });

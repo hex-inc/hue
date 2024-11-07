@@ -3950,7 +3950,8 @@
     "expectedResult": {
       "lowerCase": false
     }
-  },  {
+  },  
+  {
     "namePrefix": "should suggest keywords",
     "beforeCursor": "SELECT (5 + 5)::",
     "afterCursor": " FROM bar;",
@@ -3960,6 +3961,34 @@
     ],
     "expectedResult": {
       "lowerCase": false
+    }
+  },
+  {
+    "namePrefix": "should suggest columns for order by after a cast in a join",
+    "beforeCursor": "select * from a join b on a.a = b.b::date order by ",
+    "afterCursor": "",
+    "containsKeywords": ["CASE"],
+    "expectedResult": {
+      "lowerCase": true,
+      "suggestFunctions": {  },
+      "suggestAnalyticFunctions": true,
+      "suggestColumns": {
+        "source": "order by",
+        "tables": [
+          { "identifierChain": [ { "name": "a" } ] },
+          { "identifierChain": [ { "name": "b" } ] }
+        ]
+      },
+      "suggestOrderBys": {
+        "tables": [
+          { "identifierChain": [{ "name": "a" }] },
+          { "identifierChain": [{ "name": "b" }] }
+        ]
+      },
+      "suggestIdentifiers": [
+        { "name": "a.", "type": "table" },
+        { "name": "b.", "type": "table" }
+      ]
     }
   },
   {
