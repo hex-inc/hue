@@ -922,56 +922,23 @@ CaseWhenThenListPartTwo_EDIT
 
 // ------------------  :: CASTS  --------------------
 
-// This works right for simple casts like col::int but not fancy ones like (5 + 5)::string.
-// I sort of think that the first rule should be:
-//  ValueExpression '::' PrimitiveType
-// but then during parser generation it complains about ambiguous rules.
-
-CastExpr
- : NonParenthesizedValueExpressionPrimary '::' PrimitiveType
-  {
-    parser.extractExpressionText($$, $1, $2, $3);
-    $$ = { types: [ $3.toUpperCase() ] }
-  }
- | CastExpr '::' PrimitiveType
+ValueExpression
+ : ValueExpression '::' PrimitiveType
   {
     parser.extractExpressionText($$, $1, $2, $3);
     $$ = { types: [ $3.toUpperCase() ] }
   }
  ;
 
-CastExpr_EDIT
- : NonParenthesizedValueExpressionPrimary '::' AnyCursor
+ValueExpression_EDIT
+ : ValueExpression '::' AnyCursor
   {
     parser.suggestKeywords(parser.getTypeKeywords());
     $$ = { types: [ 'T' ] };
   }
+ | ValueExpression_EDIT '::' PrimitiveType
+  {
+    parser.addColRefIfExists($1);
+    $$ = { types: [ $3.toUpperCase() ] }
+  }
  ;
-
-ValueExpression
- : CastExpr
- ;
-
-ValueExpression_EDIT
- : CastExpr_EDIT
- ;
-
-// A different attempt that also had the amibuous rules problem
-
-// ValueExpression
-//  : ValueExpression '::' PrimitiveType
-//   {
-//     parser.extractExpressionText($$, $1, $2, $3);
-//     $$ = { types: [ $3.toUpperCase() ] }
-//   }
-//  ;
-
-// ValueExpression_EDIT
-//  : ValueExpression '::' AnyCursor
-//   {
-//     parser.extractExpressionText($$, $1, $2, $3);
-//     parser.suggestKeywords(parser.getTypeKeywords());
-//     $$ = { types: [ 'T' ] };
-//   }
-//  ;
-

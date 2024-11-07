@@ -175,14 +175,14 @@ ROW_NUMBER\s*\(                            { yy.lexer.unput('('); yytext = 'row_
 '^'                                        { return 'ARITHMETIC_OPERATOR'; }
 '&'                                        { return 'ARITHMETIC_OPERATOR'; }
 
+'::'                                       { return '::'; }
+
 ','                                        { return ','; }
 '.'                                        { return '.'; }
 ':'                                        { return ':'; }
 ';'                                        { return ';'; }
 '~'                                        { return '~'; }
 '!'                                        { return '!'; }
-
-'::'                                       { return '::'; }
 
 '('                                        { return '('; }
 ')'                                        { return ')'; }
