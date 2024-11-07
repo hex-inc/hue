@@ -720,16 +720,32 @@ PartialBacktickedIdentifierOrPartialCursor
 
 PrimitiveType
  : 'BIGINT'
+ | 'BINARY'
  | 'BOOLEAN'
  | 'CHAR' OptionalTypeLength
+ | 'CHARACTER' OptionalTypeLength
+ | 'DATE'
+ | 'DATETIME'
  | 'DECIMAL' OptionalTypePrecision
  | 'DOUBLE'
  | 'FLOAT'
+ | 'FLOAT4'
+ | 'FLOAT8'
  | 'INT'
+ | 'INTEGER'
+ | 'NUMBER' OptionalTypePrecision
+ | 'NUMERIC' OptionalTypePrecision
+ | 'REAL'
  | 'SMALLINT'
  | 'STRING'
+ | 'TEXT'
+ | 'TIME'
  | 'TIMESTAMP'
+ | 'TIMESTAMP_LTZ'
+ | 'TIMESTAMP_NTZ'
+ | 'TIMESTAMP_TZ'
  | 'TINYINT'
+ | 'VARBINARY' OptionalTypeLength
  | 'VARCHAR' OptionalTypeLength
  ;
 

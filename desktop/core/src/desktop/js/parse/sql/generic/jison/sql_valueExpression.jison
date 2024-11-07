@@ -919,3 +919,31 @@ CaseWhenThenListPartTwo_EDIT
      $$ = { caseTypes: [{ types: ['T'] }] };
    }
  ;
+
+// ------------------  :: CASTS  --------------------
+
+PrimitiveTypeOrError
+ : PrimitiveType
+ | error
+ ;
+
+ValueExpression
+ : ValueExpression '::' PrimitiveType
+  {
+    parser.extractExpressionText($$, $1, $2, $3);
+    $$ = { types: [ $3.toUpperCase() ] }
+  }
+ ;
+
+ValueExpression_EDIT
+ : ValueExpression '::' AnyCursor
+  {
+    parser.suggestKeywords(parser.getTypeKeywords());
+    $$ = { types: [ 'T' ] };
+  }
+ | ValueExpression_EDIT '::' PrimitiveTypeOrError
+  {
+    parser.addColRefIfExists($1);
+    $$ = { types: [ $3.toUpperCase() ] }
+  }
+ ;

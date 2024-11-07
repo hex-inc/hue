@@ -36,16 +36,20 @@
 'ASC'                                      { return 'ASC'; }
 'BETWEEN'                                  { this.begin('between'); return 'BETWEEN'; }
 'BIGINT'                                   { return 'BIGINT'; }
+'BINARY'                                   { return 'BINARY'; }
 'BOOLEAN'                                  { return 'BOOLEAN'; }
 'BY'                                       { return 'BY'; }
 'CASCADE'                                  { return 'CASCADE'; }
 'CASE'                                     { return 'CASE'; }
 'CHAR'                                     { return 'CHAR'; }
+'CHARACTER'                                { return 'CHARACTER'; }
 'COMMENT'                                  { return 'COMMENT'; }
 'CREATE'                                   { parser.determineCase(yytext); return 'CREATE'; }
 'CROSS'                                    { return 'CROSS'; }
 'CURRENT'                                  { return 'CURRENT'; }
 'DATABASE'                                 { return 'DATABASE'; }
+'DATE'                                     { return 'DATE'; }
+'DATETIME'                                 { return 'DATETIME'; }
 'DECIMAL'                                  { return 'DECIMAL'; }
 'DESC'                                     { return 'DESC'; }
 'DISTINCT'                                 { return 'DISTINCT'; }
@@ -57,6 +61,8 @@
 'EXISTS'                                   { parser.yy.correlatedSubQuery = true; return 'EXISTS'; }
 'FALSE'                                    { return 'FALSE'; }
 'FLOAT'                                    { return 'FLOAT'; }
+'FLOAT4'                                   { return 'FLOAT4'; }
+'FLOAT8'                                   { return 'FLOAT8'; }
 'FOLLOWING'                                { return 'FOLLOWING'; }
 'FROM'                                     { parser.determineCase(yytext); return 'FROM'; }
 'FULL'                                     { return 'FULL'; }
@@ -67,6 +73,7 @@
 'INNER'                                    { return 'INNER'; }
 'INSERT'                                   { return 'INSERT'; }
 'INT'                                      { return 'INT'; }
+'INTEGER'                                  { return 'INTEGER'; }
 'INTO'                                     { return 'INTO'; }
 'IS'                                       { return 'IS'; }
 'JOIN'                                     { return 'JOIN'; }
@@ -75,6 +82,8 @@
 'LIMIT'                                    { return 'LIMIT'; }
 'NOT'                                      { return 'NOT'; }
 'NULL'                                     { return 'NULL'; }
+'NUMBER'                                   { return 'NUMBER'; }
+'NUMERIC'                                  { return 'NUMERIC'; }
 'ON'                                       { return 'ON'; }
 'OPTION'                                   { return 'OPTION'; }
 'OR'                                       { return 'OR'; }
@@ -98,8 +107,13 @@
 'SMALLINT'                                 { return 'SMALLINT'; }
 'STRING'                                   { return 'STRING'; }
 'TABLE'                                    { return 'TABLE'; }
+'TEXT'                                     { return 'TEXT'; }
 'THEN'                                     { return 'THEN'; }
+'TIME'                                     { return 'TIME'; }
 'TIMESTAMP'                                { return 'TIMESTAMP'; }
+'TIMESTAMP_LTZ'                            { return 'TIMESTAMP_LTZ'; }
+'TIMESTAMP_NTZ'                            { return 'TIMESTAMP_NTZ'; }
+'TIMESTAMP_TZ'                             { return 'TIMESTAMP_TZ'; }
 'TINYINT'                                  { return 'TINYINT'; }
 'TO'                                       { return 'TO'; }
 'TRUE'                                     { return 'TRUE'; }
@@ -109,6 +123,7 @@
 'UPDATE'                                   { parser.determineCase(yytext); return 'UPDATE'; }
 'USE'                                      { parser.determineCase(yytext); parser.addStatementTypeLocation('USE', yylloc); return 'USE'; }
 'VALUES'                                   { return 'VALUES'; }
+'VARBINARY'                                { return 'VARBINARY'; }
 'VARCHAR'                                  { return 'VARCHAR'; }
 'VIEW'                                     { return 'VIEW'; }
 'WHEN'                                     { return 'WHEN'; }
@@ -174,6 +189,8 @@ ROW_NUMBER\s*\(                            { yy.lexer.unput('('); yytext = 'row_
 '|'                                        { return 'ARITHMETIC_OPERATOR'; }
 '^'                                        { return 'ARITHMETIC_OPERATOR'; }
 '&'                                        { return 'ARITHMETIC_OPERATOR'; }
+
+'::'                                       { return '::'; }
 
 ','                                        { return ','; }
 '.'                                        { return '.'; }

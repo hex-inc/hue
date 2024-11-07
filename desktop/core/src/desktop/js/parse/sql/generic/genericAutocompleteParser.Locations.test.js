@@ -46,6 +46,13 @@ describe('genericAutocompleteParser.js locations', () => {
     });
   };
 
+  it.skip('useful for testing', () => {
+    assertLocations({
+      beforeCursor: 'select * from a join b on a.a = b.b::date order by ',
+      expectedLocations: []
+    });
+  });
+
   it('should report locations for "select cos(1) as foo from customers order by foo;"', () => {
     assertLocations({
       beforeCursor: 'select cos(1) as foo from customers order by foo; ',

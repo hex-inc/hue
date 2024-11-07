@@ -19,6 +19,7 @@
 %left 'NOT' '!' '~'
 %left '=' '<' '>' 'COMPARISON_OPERATOR'
 %left '-' '*' 'ARITHMETIC_OPERATOR'
+%left '::'
 
 %left ';' ','
 %nonassoc 'CURSOR' 'PARTIAL_CURSOR'
